@@ -8,6 +8,7 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.*;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.InterfaceData;
+import io.gitee.xuchenoak.limejapidocs.parser.config.ParserConfig;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceMethodType;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceRequestContentType;
 import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
@@ -432,9 +433,8 @@ public class ControllerParser extends ClassParser<ControllerNode> {
      */
     private void parseBaseUri(ControllerNode controllerNode) {
         AnnotationNode annotationNode = controllerNode.getAnnotationNodeByName("RequestMapping");
-        List<FieldNode> fieldNodeList = annotationNode.getFieldNodeList();
-        if (ListUtil.isNotBlank(fieldNodeList)) {
-            for (FieldNode fieldNode : fieldNodeList) {
+        if (annotationNode != null && ListUtil.isNotBlank(annotationNode.getFieldNodeList())) {
+            for (FieldNode fieldNode : annotationNode.getFieldNodeList()) {
                 if ("value".equals(fieldNode.getName()) || "path".equals(fieldNode.getName())) {
                     if (fieldNode.isArray()) {
                         List<String> uriList = (List<String>) fieldNode.getValue();
