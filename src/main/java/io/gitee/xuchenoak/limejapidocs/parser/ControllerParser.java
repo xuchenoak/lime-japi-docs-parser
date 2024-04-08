@@ -293,6 +293,9 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             List<FieldInfo> formData = null;
             // 请求参数字段数据（json）
             FieldDataNode bodyData = null;
+            if (interfaceMethodNode.getName().equals("add")) {
+                System.out.println("--");
+            }
             for (ParamNode paramNode : paramNodeList) {
                 ClassNode paramType = paramNode.getParamType();
                 // JSON参数
@@ -328,7 +331,6 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                         continue;
                     }
                     // 自定义对象
-//                    List<FieldNode> fieldNodeList = paramType.getFieldNodeListAndExtends();
                     List<FieldNode> fieldNodeList = new ArrayList<>();
                     paramType.injectFieldNodeListAndExtends(fieldNodeList);
                     if (ListUtil.isBlank(fieldNodeList)) {
@@ -343,11 +345,11 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                                 fieldNode.getValidation()
                         );
                         if (paramNode.isValidated() || paramNode.isValid()) {
-                            parserConfigHandler.paramValidInjectHandle(typeClassNode.getAnnotationNodeList(), fieldInfo);
+                            parserConfigHandler.paramValidInjectHandle(fieldNode.getAnnotationNodeList(), fieldInfo);
                         }
                         formData.add(fieldInfo);
                         if (fieldNode.isPrimitiveType() || isDiyLastValueType(typeClassNode.getFullName())) {
-                            parserConfigHandler.paramDefaultValueInjectHandle(typeClassNode.getAnnotationNodeList(), fieldInfo);
+                            parserConfigHandler.paramDefaultValueInjectHandle(fieldNode.getAnnotationNodeList(), fieldInfo);
                             fieldInfo.toLastValue();
                         }
                     }
