@@ -8,6 +8,7 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.*;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.InterfaceData;
+import io.gitee.xuchenoak.limejapidocs.parser.config.ParserConfig;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceMethodType;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceRequestContentType;
 import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
@@ -292,6 +293,9 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             List<FieldInfo> formData = null;
             // 请求参数字段数据（json）
             FieldDataNode bodyData = null;
+            if (interfaceMethodNode.getName().equals("add")) {
+                System.out.println("--");
+            }
             for (ParamNode paramNode : paramNodeList) {
                 ClassNode paramType = paramNode.getParamType();
                 // JSON参数
@@ -327,7 +331,6 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                         continue;
                     }
                     // 自定义对象
-//                    List<FieldNode> fieldNodeList = paramType.getFieldNodeListAndExtends();
                     List<FieldNode> fieldNodeList = new ArrayList<>();
                     paramType.injectFieldNodeListAndExtends(fieldNodeList);
                     if (ListUtil.isBlank(fieldNodeList)) {
@@ -342,11 +345,11 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                                 fieldNode.getValidation()
                         );
                         if (paramNode.isValidated() || paramNode.isValid()) {
-                            parserConfigHandler.paramValidInjectHandle(typeClassNode.getAnnotationNodeList(), fieldInfo);
+                            parserConfigHandler.paramValidInjectHandle(fieldNode.getAnnotationNodeList(), fieldInfo);
                         }
                         formData.add(fieldInfo);
                         if (fieldNode.isPrimitiveType() || isDiyLastValueType(typeClassNode.getFullName())) {
-                            parserConfigHandler.paramDefaultValueInjectHandle(typeClassNode.getAnnotationNodeList(), fieldInfo);
+                            parserConfigHandler.paramDefaultValueInjectHandle(fieldNode.getAnnotationNodeList(), fieldInfo);
                             fieldInfo.toLastValue();
                         }
                     }
@@ -432,9 +435,8 @@ public class ControllerParser extends ClassParser<ControllerNode> {
      */
     private void parseBaseUri(ControllerNode controllerNode) {
         AnnotationNode annotationNode = controllerNode.getAnnotationNodeByName("RequestMapping");
-        List<FieldNode> fieldNodeList = annotationNode.getFieldNodeList();
-        if (ListUtil.isNotBlank(fieldNodeList)) {
-            for (FieldNode fieldNode : fieldNodeList) {
+        if (annotationNode != null && ListUtil.isNotBlank(annotationNode.getFieldNodeList())) {
+            for (FieldNode fieldNode : annotationNode.getFieldNodeList()) {
                 if ("value".equals(fieldNode.getName()) || "path".equals(fieldNode.getName())) {
                     if (fieldNode.isArray()) {
                         List<String> uriList = (List<String>) fieldNode.getValue();
