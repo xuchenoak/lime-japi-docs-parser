@@ -136,7 +136,7 @@ public class StringUtil {
                     if (StringUtil.isNotBlank(comment)) {
                         str.append(fieldRetract)
                                 .append("// ")
-                                .append(comment);
+                                .append(comment.replaceAll("\n", "\n".concat(fieldRetract).concat("// ")));
                         if (hasType) {
                             String type = fieldInfo.getType();
                             if (StringUtil.isNotBlank(type)) {

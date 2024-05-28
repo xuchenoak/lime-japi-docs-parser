@@ -10,8 +10,6 @@ import com.github.javaparser.javadoc.JavadocBlockTag;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.AnnotationNode;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.FieldNode;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.TagNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -24,8 +22,6 @@ import java.util.stream.Collectors;
  * @author xuchenoak
  **/
 public class ParseUtil {
-
-    private static final Logger logger = LoggerFactory.getLogger(ParseUtil.class);
 
     public static final String TAG_NAME_AUTHOR = "author";
     public static final String TAG_NAME_COMMENT = "comment";

@@ -381,7 +381,6 @@ public abstract class ClassParser<T extends ClassNode> {
                 String fieldName = variableDeclarator.getName().asString();
                 fieldNode.setName(fieldName);
                 fieldNode.setValueTypeClassNode(parseClassByType(variableDeclarator.getType(), fieldNode));
-                return;
             }));
             ParseUtil.parseAnnotation(fieldDeclaration.getAnnotations())
                     .forEach(annotationNode -> fieldNode.addAnnotationNode(annotationNode));
