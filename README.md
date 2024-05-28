@@ -199,6 +199,8 @@ public class StringUtil {
     - BUG修复：
         1. 修复了ControllerParser.parseBaseUri空指针问题；
         2. 修复了对象接收param参数无法解析Valid/Validated参数验证问题。
+- 2024-05-28 V1.0.3 更新：
+    - BUG修复：修复了多行注释仅注释了一行的问题。
 
 ## 6 最后&致谢
 
