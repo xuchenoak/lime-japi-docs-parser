@@ -79,6 +79,10 @@ public class BaseNode<T extends BaseNode> {
     }
 
     public void lastBuild() {
+        lastBuild(true);
+    }
+
+    public void lastBuild(boolean appendNestComment) {
         TagNode authorTagNode = getTagNodeByName(ParseUtil.TAG_NAME_AUTHOR);
         if (authorTagNode != null) {
             author = authorTagNode.getTagValue();
@@ -92,7 +96,7 @@ public class BaseNode<T extends BaseNode> {
                 comment = commentTagNode.getTagValue();
             }
         }
-        if (comment != null && StringUtil.isNotBlank(nestComment)) {
+        if (comment != null && StringUtil.isNotBlank(nestComment) && appendNestComment) {
             comment = comment.concat("（结构同字段：").concat(nestComment).concat("）");
         }
     }

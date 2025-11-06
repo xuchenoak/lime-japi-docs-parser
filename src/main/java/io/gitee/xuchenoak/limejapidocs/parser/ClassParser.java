@@ -328,6 +328,18 @@ public abstract class ClassParser<T extends ClassNode> {
             ParseUtil.parseAnnotation(methodDeclaration.getAnnotations())
                     .forEach(annotationNode -> methodNode.addAnnotationNode(annotationNode));
             // 解析方法参数
+            Map<String, String> typeExtendsMap = null;
+            NodeList<TypeParameter> typeParameters = methodDeclaration.getTypeParameters();
+            if (typeParameters != null && typeParameters.size() > 0) {
+                for (TypeParameter typeParameter : typeParameters) {
+                    NodeList<ClassOrInterfaceType> typeBounds = typeParameter.getTypeBound();
+                    if (typeBounds != null && typeBounds.size() > 0) {
+                        typeExtendsMap = new HashMap<>();
+                        typeExtendsMap.put(typeParameter.getNameAsString(), typeBounds.get(0).getNameAsString());
+                    }
+                }
+            }
+            Map<String, String> finalTypeExtendsMap = typeExtendsMap;
             methodDeclaration.getParameters().forEach(parameter -> {
                 ParamNode paramNode = new ParamNode();
                 paramNode.setName(parameter.getNameAsString());
@@ -337,12 +349,12 @@ public abstract class ClassParser<T extends ClassNode> {
                 }
                 ParseUtil.parseAnnotation(parameter.getAnnotations())
                         .forEach(paramAnnotationNode -> paramNode.addAnnotationNode(paramAnnotationNode));
-                paramNode.setParamType(parseClassByType(parameter.getType(), paramNode));
+                paramNode.setParamType(parseClassByType(parameter.getType(), paramNode, finalTypeExtendsMap));
                 methodNode.addParamNode(paramNode);
             });
             // 解析方法返回类型
             methodNode.setReturnNode(parseClassByType(methodDeclaration.getType(), methodNode));
-            methodNode.lastBuild();
+            methodNode.lastBuild(false);
             classNode.addMethodNode(methodNode);
         });
     }
@@ -396,9 +408,20 @@ public abstract class ClassParser<T extends ClassNode> {
      * 根据类型解析为类节点
      *
      * @param baseNode 父级节点 用于记录标注类嵌套
-     * @param: type 类型
+     * @param type 类型
      */
     private ClassNode parseClassByType(Type type, BaseNode baseNode) {
+        return parseClassByType(type, baseNode, null);
+    }
+
+    /**
+     * 根据类型解析为类节点
+     *
+     * @param baseNode 父级节点 用于记录标注类嵌套
+     * @param type 类型
+     * @param typeExtendsMap 类型继承关系映射（方法上有的泛型继承于某个类，如果本身找不到则取继承的类）
+     */
+    private ClassNode parseClassByType(Type type, BaseNode baseNode, Map<String, String> typeExtendsMap) {
         ClassNode classNode = new ClassNode();
         classNode.setName(Object.class.getSimpleName());
         classNode.setFullName(Object.class.getName());
@@ -490,6 +513,12 @@ public abstract class ClassParser<T extends ClassNode> {
                 _classNode = fromGenericityNodeMap.get(className);
                 if (_classNode != null) {
                     return _classNode;
+                } if (typeExtendsMap != null && typeExtendsMap.containsKey(className)) {
+                    className = typeExtendsMap.get(className);
+                    _classNode = fromGenericityNodeMap.get(className);
+                    if (_classNode != null) {
+                        return _classNode;
+                    }
                 }
 
                 // 其它类只取类名（类全名仍然用java.lang.Object）
