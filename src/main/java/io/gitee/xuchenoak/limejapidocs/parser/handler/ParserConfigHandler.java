@@ -138,4 +138,14 @@ public interface ParserConfigHandler {
      */
     void parseFinishedHandle(List<ControllerData> controllerDataList);
 
+    /**
+     * 是否解析Controller类的直接父类接口方法
+     * 1.这里做一个配置是因为解析父类不好判断接口方法重写，故默认关闭
+     * 2.如果开启，会解析直接父类接口方法，如果有重写方法则通过“方法名_参数数量”来判断是否同一个方法，所以打开后尽量避免方法重载，否则可能会出现方法错乱问题
+     * @return 是否解析直接父类接口方法
+     */
+    default boolean isParseControllerFirstParent() {
+        return false;
+    }
+
 }

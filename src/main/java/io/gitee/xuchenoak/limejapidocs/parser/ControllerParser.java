@@ -8,7 +8,6 @@ import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.*;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.InterfaceData;
-import io.gitee.xuchenoak.limejapidocs.parser.config.ParserConfig;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceMethodType;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceRequestContentType;
 import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
@@ -21,10 +20,9 @@ import io.gitee.xuchenoak.limejapidocs.parser.util.ListUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.util.ParseUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 控制器解析器
@@ -90,7 +88,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         Set<String> ignoreControllerNames = parserConfigHandler.getParserConfig().getIgnoreControllerNames();
         if (ListUtil.isNotBlank(filterControllerNames)) {
             if (filterControllerNames.stream().filter(n -> n.equals(className)).count() < 1) {
-                throw CustomException.instance("已配置得仅解析接口类未包含{}类，不再解析", className);
+                throw CustomException.instance("已配置的仅解析接口类未包含{}类，不再解析", className);
             }
         }
         if (ListUtil.isNotBlank(ignoreControllerNames)) {
@@ -162,111 +160,165 @@ public class ControllerParser extends ClassParser<ControllerNode> {
      * @param controllerNode 控制层节点对象
      */
     private void parseInterfaceMethod(ControllerNode controllerNode) {
-        List<MethodNode> methodNodeList = controllerNode.getMethodNodeList();
-        if (ListUtil.isNotBlank(methodNodeList)) {
-            for (MethodNode methodNode : methodNodeList) {
-                if (methodNode.getIgnore()) {
-                    continue;
-                }
-                InterfaceMethodNode interfaceMethodNode = new InterfaceMethodNode(methodNode);
-                // 若为RequestMapping注解则最优先
-                AnnotationNode annotationNode = methodNode.getAnnotationNodeByName(InterfaceMethodType.DEFAULT.getAnnotation());
-                if (annotationNode != null) {
-                    boolean hasUri = false;
-                    boolean hasMethod = false;
-                    List<FieldNode> fieldNodeList = annotationNode.getFieldNodeList();
-                    if (ListUtil.isNotBlank(fieldNodeList)) {
-                        for (FieldNode fieldNode : fieldNodeList) {
-                            // uri
-                            if ("value".equals(fieldNode.getName()) || "path".equals(fieldNode.getName())) {
-                                if (fieldNode.isArray()) {
-                                    List<String> uriList = (List<String>) fieldNode.getValue();
-                                    if (ListUtil.isNotBlank(uriList)) {
-                                        for (String uri : uriList) {
-                                            hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), uri);
-                                        }
-                                    }
-                                } else {
-                                    hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), String.valueOf(fieldNode.getValue()));
-                                }
-                            }
-                            // methodType
-                            else if ("method".equals(fieldNode.getName())) {
-                                if (fieldNode.isArray()) {
-                                    List<String> methodList = (List<String>) fieldNode.getValue();
-                                    for (String method : methodList) {
-                                        InterfaceMethodType methodType = InterfaceMethodType.getMethodTypeByHttpMethod(method);
-                                        if (methodType != null) {
-                                            hasMethod = true;
-                                            interfaceMethodNode.addRequestType(method);
-                                        }
-                                    }
-                                } else {
-                                    InterfaceMethodType methodType = InterfaceMethodType.getMethodTypeByHttpMethod(String.valueOf(fieldNode.getValue()));
-                                    if (methodType != null) {
-                                        hasMethod = true;
-                                        interfaceMethodNode.addRequestType(methodType.getHttpMethod());
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), "");
-                    }
-
-                    // 未设置方法 默认所有方法
-                    if (hasUri && !hasMethod) {
-                        for (InterfaceMethodType type : InterfaceMethodType.values()) {
-                            if (type.equals(InterfaceMethodType.DEFAULT)) {
-                                continue;
-                            }
-                            interfaceMethodNode.addRequestType(type.getHttpMethod());
-                        }
-                    }
-                    if (hasUri) {
-                        parseInterfaceMethodParam(interfaceMethodNode, controllerNode.isValidated());
-                        parseInterFaceMethodResData(interfaceMethodNode);
-                        controllerNode.addInterfaceMethodNode(interfaceMethodNode);
-                    }
-                    continue;
-                }
-                // 另外注解
-                for (InterfaceMethodType type : InterfaceMethodType.values()) {
-                    annotationNode = methodNode.getAnnotationNodeByName(type.getAnnotation());
-                    if (annotationNode != null) {
-                        interfaceMethodNode.addRequestType(type.getHttpMethod());
-                        break;
-                    }
-                }
-                if (annotationNode != null) {
-                    List<FieldNode> fieldNodeList = annotationNode.getFieldNodeList();
-                    boolean hasUri = false;
-                    if (ListUtil.isNotBlank(fieldNodeList)) {
-                        for (FieldNode fieldNode : fieldNodeList) {
-                            if ("value".equals(fieldNode.getName()) || "path".equals(fieldNode.getName())) {
-                                if (fieldNode.isArray()) {
-                                    List<String> uriList = (List<String>) fieldNode.getValue();
-                                    if (ListUtil.isNotBlank(uriList)) {
-                                        for (String uri : uriList) {
-                                            hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), uri);
-                                        }
-                                    }
-                                } else {
-                                    hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), String.valueOf(fieldNode.getValue()));
-                                }
-                            }
-                        }
-                    } else {
-                        hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), "");
-                    }
-                    if (hasUri) {
-                        parseInterfaceMethodParam(interfaceMethodNode, controllerNode.isValidated());
-                        parseInterFaceMethodResData(interfaceMethodNode);
-                        controllerNode.addInterfaceMethodNode(interfaceMethodNode);
-                    }
+        // 处理本类接口方法
+        List<InterfaceMethodNode> thisInterfaceMethodNodeList = new ArrayList<>();
+        List<MethodNode> thisMethodNodeList = controllerNode.getMethodNodeList();
+        if (ListUtil.isNotBlank(thisMethodNodeList)) {
+            for (MethodNode thisMethodNode : thisMethodNodeList) {
+                InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(thisMethodNode, controllerNode);
+                if (interfaceMethodNode != null) {
+                    thisInterfaceMethodNodeList.add(interfaceMethodNode);
                 }
             }
         }
+        thisInterfaceMethodNodeList.forEach(interfaceMethodNode -> controllerNode.addInterfaceMethodNode(interfaceMethodNode));
+        if (!Optional.ofNullable(parserConfigHandler.isParseControllerFirstParent()).orElse(false)) {
+            return;
+        }
+        // 处理父类接口方法
+        List<InterfaceMethodNode> parentInterfaceMethodNodeList = new ArrayList<>();
+        ClassNode extendsNode = controllerNode.getExtendsNode();
+        if (extendsNode != null && ListUtil.isNotBlank(extendsNode.getMethodNodeList())) {
+            // 重写父类的方法
+            Map<String, MethodNode> overrideMethodMap = thisMethodNodeList.stream().filter(MethodNode::isOverride)
+                    .collect(Collectors.toMap(v -> v.getName() + "_" + (v.getParamNodeList() == null ? 0 : v.getParamNodeList().size()), Function.identity()));
+            // 重写父类的接口方法
+            Map<String, MethodNode> overrideInterfaceMethodMap = thisInterfaceMethodNodeList.stream().filter(MethodNode::isOverride)
+                    .collect(Collectors.toMap(v -> v.getName() + "_" + (v.getParamNodeList() == null ? 0 : v.getParamNodeList().size()), Function.identity()));
+            for (MethodNode parentMethodNode : extendsNode.getMethodNodeList()) {
+                String overrideKey = parentMethodNode.getName() + "_" + (parentMethodNode.getParamNodeList() == null ? 0 : parentMethodNode.getParamNodeList().size());
+                // 若为重写父类的接口方法则直接用子类接口（只要重写的子类加了接口注解，就只有子类生效）
+                if (overrideInterfaceMethodMap.containsKey(overrideKey)) {
+                    continue;
+                }
+                // 若为重写父类的方法则使用父类的注解和子类的方法进行解析（重写的子类没加注解则以父类注解为主）
+                if (overrideMethodMap.containsKey(overrideKey)) {
+                    MethodNode childMethodNode = overrideMethodMap.get(overrideKey);
+                    // 把父级的注解给子集方法
+                    childMethodNode.setAnnotationNodeList(parentMethodNode.getAnnotationNodeList());
+                    childMethodNode.setComment(parentMethodNode.getComment());
+                    InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(childMethodNode, controllerNode);
+                    if (interfaceMethodNode != null) {
+                        parentInterfaceMethodNodeList.add(interfaceMethodNode);
+                    }
+                    continue;
+                }
+                // 其它父类接口正常解析
+                InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(parentMethodNode, controllerNode);
+                if (interfaceMethodNode != null) {
+                    parentInterfaceMethodNodeList.add(interfaceMethodNode);
+                }
+            }
+        }
+        parentInterfaceMethodNodeList.forEach(interfaceMethodNode -> controllerNode.addInterfaceMethodNode(interfaceMethodNode));
+
+    }
+
+    /**
+     * 构建接口方法节点对象
+     * @param methodNode 方法节点对象
+     * @param controllerNode 控制层节点对象
+     * @return
+     */
+    private InterfaceMethodNode buildInterfaceMethodNode(MethodNode methodNode, ControllerNode controllerNode) {
+        InterfaceMethodNode interfaceMethodNode = new InterfaceMethodNode(methodNode);
+        // 若为RequestMapping注解则最优先
+        AnnotationNode annotationNode = methodNode.getAnnotationNodeByName(InterfaceMethodType.DEFAULT.getAnnotation());
+        if (annotationNode != null) {
+            boolean hasUri = false;
+            boolean hasMethod = false;
+            List<FieldNode> fieldNodeList = annotationNode.getFieldNodeList();
+            if (ListUtil.isNotBlank(fieldNodeList)) {
+                for (FieldNode fieldNode : fieldNodeList) {
+                    // uri
+                    if ("value".equals(fieldNode.getName()) || "path".equals(fieldNode.getName())) {
+                        if (fieldNode.isArray()) {
+                            List<String> uriList = (List<String>) fieldNode.getValue();
+                            if (ListUtil.isNotBlank(uriList)) {
+                                for (String uri : uriList) {
+                                    hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), uri);
+                                }
+                            }
+                        } else {
+                            hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), String.valueOf(fieldNode.getValue()));
+                        }
+                    }
+                    // methodType
+                    else if ("method".equals(fieldNode.getName())) {
+                        if (fieldNode.isArray()) {
+                            List<String> methodList = (List<String>) fieldNode.getValue();
+                            for (String method : methodList) {
+                                InterfaceMethodType methodType = InterfaceMethodType.getMethodTypeByHttpMethod(method);
+                                if (methodType != null) {
+                                    hasMethod = true;
+                                    interfaceMethodNode.addRequestType(method);
+                                }
+                            }
+                        } else {
+                            InterfaceMethodType methodType = InterfaceMethodType.getMethodTypeByHttpMethod(String.valueOf(fieldNode.getValue()));
+                            if (methodType != null) {
+                                hasMethod = true;
+                                interfaceMethodNode.addRequestType(methodType.getHttpMethod());
+                            }
+                        }
+                    }
+                }
+            } else {
+                hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), "");
+            }
+
+            // 未设置方法 默认所有方法
+            if (hasUri && !hasMethod) {
+                for (InterfaceMethodType type : InterfaceMethodType.values()) {
+                    if (type.equals(InterfaceMethodType.DEFAULT)) {
+                        continue;
+                    }
+                    interfaceMethodNode.addRequestType(type.getHttpMethod());
+                }
+            }
+            if (hasUri) {
+                parseInterfaceMethodParam(interfaceMethodNode, controllerNode.isValidated());
+                parseInterFaceMethodResData(interfaceMethodNode);
+                return interfaceMethodNode;
+            }
+            return null;
+        }
+        // 另外注解
+        for (InterfaceMethodType type : InterfaceMethodType.values()) {
+            annotationNode = methodNode.getAnnotationNodeByName(type.getAnnotation());
+            if (annotationNode != null) {
+                interfaceMethodNode.addRequestType(type.getHttpMethod());
+                break;
+            }
+        }
+        if (annotationNode != null) {
+            List<FieldNode> fieldNodeList = annotationNode.getFieldNodeList();
+            boolean hasUri = false;
+            if (ListUtil.isNotBlank(fieldNodeList)) {
+                for (FieldNode fieldNode : fieldNodeList) {
+                    if ("value".equals(fieldNode.getName()) || "path".equals(fieldNode.getName())) {
+                        if (fieldNode.isArray()) {
+                            List<String> uriList = (List<String>) fieldNode.getValue();
+                            if (ListUtil.isNotBlank(uriList)) {
+                                for (String uri : uriList) {
+                                    hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), uri);
+                                }
+                            }
+                        } else {
+                            hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), String.valueOf(fieldNode.getValue()));
+                        }
+                    }
+                }
+            } else {
+                hasUri = addRealUri(interfaceMethodNode, controllerNode.getBaseUriList(), "");
+            }
+            if (hasUri) {
+                parseInterfaceMethodParam(interfaceMethodNode, controllerNode.isValidated());
+                parseInterFaceMethodResData(interfaceMethodNode);
+                return interfaceMethodNode;
+            }
+        }
+        return null;
     }
 
     /**
@@ -293,9 +345,6 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             List<FieldInfo> formData = null;
             // 请求参数字段数据（json）
             FieldDataNode bodyData = null;
-            if (interfaceMethodNode.getName().equals("add")) {
-                System.out.println("--");
-            }
             for (ParamNode paramNode : paramNodeList) {
                 ClassNode paramType = paramNode.getParamType();
                 // JSON参数
@@ -337,6 +386,9 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                         continue;
                     }
                     for (FieldNode fieldNode : fieldNodeList) {
+                        if (fieldNode.isStatic()) {
+                            continue;
+                        }
                         ClassNode typeClassNode = fieldNode.getValueTypeClassNode();
                         FieldInfo fieldInfo = new FieldInfo(
                                 fieldNode.getComment(),

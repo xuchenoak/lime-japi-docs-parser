@@ -13,7 +13,7 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 <dependency>
     <groupId>io.gitee.xuchenoak</groupId>
     <artifactId>lime-japi-docs-parser</artifactId>
-    <version>1.0.3</version>
+    <version>1.0.4</version>
 </dependency>
 ```
 ### 2.2 下载jar包（方式二）
@@ -124,6 +124,13 @@ public interface ParserConfigHandler {
     // 解析完成处理
     void parseFinishedHandle(List<ControllerData> controllerDataList);
 
+    // 是否解析Controller类的直接父类接口方法（V1.0.4新增）
+    // 这里做一个配置是因为解析父类不好判断接口方法重写，故默认关闭
+    // 如果开启，会解析直接父类接口方法，如果有重写方法则通过“方法名_参数数量”来判断是否同一个方法，所以打开后尽量避免方法重载，否则可能会出现方法错乱问题
+    default boolean isParseControllerFirstParent() {
+        return false;
+    }
+
 }
 ```
 ### 3.4 ParserConfig
@@ -204,7 +211,16 @@ public class StringUtil {
 - 2024-05-28 V1.0.3 更新：
     - BUG修复：修复了多行注释仅注释了一行的问题。
 
+- 2025-11-06 V1.0.4 更新：
+    - 新增功能：支持扫描Controller类的直接父类接口方法（如果方法被子类重写则以子类为准），这个功能可能不稳定，所以加了配置来控制是否开启，默认关闭。
+    - BUG修复：
+        1. 修复方法中的泛型继承无法找到类型问题，若泛型本身找不到类型则取其继承父类的类型；
+        2. 修复了接口方法参数对象会解析静态方法的问题；
+        3. 修复了部分注释错别字问题。
+
+
 ## 6 最后&致谢
 
 1. 本项目的灵感源于`@YeDaxia`的项目 [JApiDocs](https://github.com/YeDaxia/JApiDocs)，它是一个可以解析Java源码并生成接口文档（支持生成html静态页或markdown等）的工具；
-2. 本项目解析Java源码使用的是项目 [javaparser](http://javaparser.org/) 提供的解析器。
+2. 本项目解析Java源码使用的是项目 [javaparser](http://javaparser.org/) 提供的解析器；
+3. 感谢在本项目中使用到的所有第三方项目（工具、框架）的作者和贡献者们，这些项目的版权归其原作者所有。

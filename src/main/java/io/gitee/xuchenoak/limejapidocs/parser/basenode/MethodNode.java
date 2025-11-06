@@ -54,4 +54,7 @@ public class MethodNode<T extends MethodNode> extends BaseNode {
         return null;
     }
 
+    public boolean isOverride() {
+        return getAnnotationNodeByName("Override") != null;
+    }
 }
