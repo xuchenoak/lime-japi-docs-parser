@@ -6,7 +6,7 @@
 
     <groupId>io.gitee.xuchenoak</groupId>
     <artifactId>lime-japi-docs-parser</artifactId>
-    <version>1.0.4</version>
+    <version>1.0.5</version>
     <packaging>jar</packaging>
 
     <properties>
@@ -27,7 +27,7 @@
     <developers>
         <developer>
             <name>xuchenoak</name>
-            <email>taoxucheng@foxmail.com</email>
+            <email>1151891301@qq.com</email>
             <organization>xuchenoak</organization>
             <organizationUrl>https://gitee.com/xuchenoak</organizationUrl>
         </developer>

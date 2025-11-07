@@ -13,7 +13,7 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 <dependency>
     <groupId>io.gitee.xuchenoak</groupId>
     <artifactId>lime-japi-docs-parser</artifactId>
-    <version>1.0.4</version>
+    <version>1.0.5</version>
 </dependency>
 ```
 ### 2.2 下载jar包（方式二）
@@ -218,6 +218,8 @@ public class StringUtil {
         2. 修复了接口方法参数对象会解析静态方法的问题；
         3. 修复了部分注释错别字问题。
 
+- 2025-11-07 V1.0.5 更新：
+    - BUG修复：修复了接口方法解析的一个空指针问题。
 
 ## 6 最后&致谢
 

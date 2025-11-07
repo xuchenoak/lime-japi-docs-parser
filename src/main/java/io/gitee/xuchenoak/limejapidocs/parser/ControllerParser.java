@@ -180,11 +180,20 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         ClassNode extendsNode = controllerNode.getExtendsNode();
         if (extendsNode != null && ListUtil.isNotBlank(extendsNode.getMethodNodeList())) {
             // 重写父类的方法
-            Map<String, MethodNode> overrideMethodMap = thisMethodNodeList.stream().filter(MethodNode::isOverride)
-                    .collect(Collectors.toMap(v -> v.getName() + "_" + (v.getParamNodeList() == null ? 0 : v.getParamNodeList().size()), Function.identity()));
+            Map<String, MethodNode> overrideMethodMap = null;
+            if (ListUtil.isNotBlank(thisMethodNodeList)) {
+                overrideMethodMap = thisMethodNodeList.stream().filter(MethodNode::isOverride)
+                        .collect(Collectors.toMap(v -> v.getName() + "_" + (v.getParamNodeList() == null ? 0 : v.getParamNodeList().size()), Function.identity()));
+            }
+            if (overrideMethodMap == null) {
+                overrideMethodMap = new HashMap<>();
+            }
             // 重写父类的接口方法
             Map<String, MethodNode> overrideInterfaceMethodMap = thisInterfaceMethodNodeList.stream().filter(MethodNode::isOverride)
                     .collect(Collectors.toMap(v -> v.getName() + "_" + (v.getParamNodeList() == null ? 0 : v.getParamNodeList().size()), Function.identity()));
+            if (overrideInterfaceMethodMap == null) {
+                overrideInterfaceMethodMap = new HashMap<>();
+            }
             for (MethodNode parentMethodNode : extendsNode.getMethodNodeList()) {
                 String overrideKey = parentMethodNode.getName() + "_" + (parentMethodNode.getParamNodeList() == null ? 0 : parentMethodNode.getParamNodeList().size());
                 // 若为重写父类的接口方法则直接用子类接口（只要重写的子类加了接口注解，就只有子类生效）
