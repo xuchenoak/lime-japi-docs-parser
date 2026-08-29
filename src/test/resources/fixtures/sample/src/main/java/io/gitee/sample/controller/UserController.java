@@ -1,6 +1,7 @@
 package io.gitee.sample.controller;
 
 import io.gitee.sample.dto.GenericParam;
+import io.gitee.sample.dto.Outer;
 import io.gitee.sample.dto.SelfRef;
 import io.gitee.sample.dto.User;
 import io.gitee.sample.dto.UserQuery;
@@ -127,6 +128,22 @@ public class UserController {
      */
     @GetMapping("/record")
     public UserRecord recordDemo() {
+        return null;
+    }
+
+    /**
+     * Return an inner class of Outer
+     */
+    @GetMapping("/inner")
+    public Outer.Inner inner() {
+        return null;
+    }
+
+    /**
+     * Return a nested record of Outer
+     */
+    @GetMapping("/nested-rec")
+    public Outer.NestedRec nestedRec() {
         return null;
     }
 

@@ -310,7 +310,7 @@ public class LimeJapiDocsParserTest {
     }
 
     @Test
-    public void build_recordTypeDoesNotBreakParsing() {
+    public void build_recordTypeComponentFieldsParsed() {
         ControllerData user = controllerOf(build(), USER_CONTROLLER);
         InterfaceData demo = interfaceOf(user, "recordDemo");
         assertNotNull(demo);
@@ -318,7 +318,49 @@ public class LimeJapiDocsParserTest {
         FieldDataNode resData = demo.getResData();
         assertNotNull(resData);
         assertFalse(resData.isLastValue());
-        assertTrue(resData.getFieldInfoList() == null || resData.getFieldInfoList().isEmpty());
+        assertNotNull(resData.getFieldInfoList());
+        assertEquals(2, resData.getFieldInfoList().size());
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "username".equals(f.getName()) && "String".equals(f.getType())));
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "age".equals(f.getName()) && "Integer".equals(f.getType())));
+    }
+
+    @Test
+    public void build_innerClassReferenceResolved() {
+        ControllerData user = controllerOf(build(), USER_CONTROLLER);
+        InterfaceData inner = interfaceOf(user, "inner");
+        assertNotNull(inner);
+        assertEquals("/api/user/inner", inner.getUriList().get(0));
+        FieldDataNode resData = inner.getResData();
+        assertNotNull(resData);
+        assertFalse(resData.isLastValue());
+        assertNotNull(resData.getFieldInfoList());
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "innerName".equals(f.getName()) && "String".equals(f.getType())));
+    }
+
+    @Test
+    public void build_nestedRecordReferenceResolved() {
+        ControllerData user = controllerOf(build(), USER_CONTROLLER);
+        InterfaceData nestedRec = interfaceOf(user, "nestedRec");
+        assertNotNull(nestedRec);
+        assertEquals("/api/user/nested-rec", nestedRec.getUriList().get(0));
+        FieldDataNode resData = nestedRec.getResData();
+        assertNotNull(resData);
+        assertFalse(resData.isLastValue());
+        assertNotNull(resData.getFieldInfoList());
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "key".equals(f.getName()) && "String".equals(f.getType())));
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "value".equals(f.getName()) && "Long".equals(f.getType())));
+    }
+
+    @Test
+    public void build_nestedTypeDoesNotProduceExtraController() {
+        List<ControllerData> list = build();
+        assertEquals(2, list.size());
+        list.forEach(c -> assertFalse(c.getControllerFullName().contains("Outer")));
     }
 
     @Test

@@ -133,4 +133,44 @@ public class ClassParserTest {
         assertNotNull(cu);
         assertTrue(cu.getRecordByName("UserRecord").isPresent());
     }
+
+    @Test
+    public void parse_recordFileDirectShowsComponents() {
+        ClassNode node = parseFixture("io/gitee/sample/dto/UserRecord.java");
+        assertNotNull(node);
+        assertEquals("UserRecord", node.getName());
+        assertEquals("io.gitee.sample.dto.UserRecord", node.getFullName());
+        assertEquals("String", node.getFieldNodeByName("username").getValueTypeClassNode().getName());
+        assertEquals("Integer", node.getFieldNodeByName("age").getValueTypeClassNode().getName());
+    }
+
+    @Test
+    public void parse_nestedTypesMounted() {
+        ClassNode node = parseFixture("io/gitee/sample/dto/Outer.java");
+        assertNotNull(node);
+        assertEquals("Outer", node.getName());
+        assertTrue(node.getNestedClassNodeList().size() == 3);
+
+        ClassNode inner = node.getNestedClassNodeList().get(0);
+        assertEquals("Inner", inner.getName());
+        assertEquals("io.gitee.sample.dto.Outer.Inner", inner.getFullName());
+        assertEquals("String", inner.getFieldNodeByName("innerName").getValueTypeClassNode().getName());
+
+        ClassNode nested = node.getNestedClassNodeList().get(1);
+        assertEquals("Nested", nested.getName());
+        assertEquals("Integer", nested.getFieldNodeByName("code").getValueTypeClassNode().getName());
+
+        ClassNode nestedRec = node.getNestedClassNodeList().get(2);
+        assertEquals("NestedRec", nestedRec.getName());
+        assertEquals("String", nestedRec.getFieldNodeByName("key").getValueTypeClassNode().getName());
+        assertEquals("Long", nestedRec.getFieldNodeByName("value").getValueTypeClassNode().getName());
+    }
+
+    @Test
+    public void parse_innerFieldReferencedBySimpleName() {
+        ClassNode node = parseFixture("io/gitee/sample/dto/Outer.java");
+        ClassNode innerType = node.getFieldNodeByName("inner").getValueTypeClassNode();
+        assertEquals("Inner", innerType.getName());
+        assertNotNull(innerType.getFieldNodeByName("innerName"));
+    }
 }

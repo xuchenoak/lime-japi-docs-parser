@@ -72,6 +72,11 @@ public class ClassNode extends BaseNode {
     private List<ClassNode> implementsNodeList;
 
     /**
+     * 嵌套类型集（内部类/内部静态类/嵌套record）
+     */
+    private List<ClassNode> nestedClassNodeList;
+
+    /**
      * 获取本类及父级属性节点（本类属性优先，父级同名属性被本类覆盖）
      *
      * @return 属性及其继承节点属性集
@@ -259,6 +264,13 @@ public class ClassNode extends BaseNode {
             implementsNodeList = new ArrayList<>();
         }
         implementsNodeList.add(classNode);
+    }
+
+    public void addNestedClassNode(ClassNode classNode) {
+        if (nestedClassNodeList == null) {
+            nestedClassNodeList = new ArrayList<>();
+        }
+        nestedClassNodeList.add(classNode);
     }
 
 
