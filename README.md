@@ -10,6 +10,8 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 
 解析语法能力：最高支持 Java 25 正式语法（含 record、record 模式、文本块等），解析不受运行 JDK 版本限制；javaparser 暂不支持的 preview 特性（如字符串模板 String Templates）会解析失败并在扫描时跳过该文件。
 
+缓存与内存：每次 `LimeJapiDocsParser.build` 视为一次全新解析会话，解析结束后自动清空类模板缓存与 root 路径集（`finally` 兜底，异常中断同样清理），保证每次均基于最新源码且不会在服务（如 SpringBoot）进程中残留驻留内存；一次会话内多处引用同一类会共享缓存提升效率。直接使用 `ClassParser.parse` 时模板缓存会保留到下次清理，且 `build` 结束后 root 集随之清空——如需在 `build` 之后直接使用 `ClassParser.parse`，请自行 `ClassParser.addRootPath` 登记源码路径；如需释放内存或强制最新，可调用 `ClassParser.clearCache()` / `clearRootPaths()`。
+
 ## 2 安装
 ### 2.1 引入依赖（方式一）
 ```xml

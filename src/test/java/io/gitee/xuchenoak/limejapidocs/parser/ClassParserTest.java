@@ -12,6 +12,7 @@ import java.io.File;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -121,6 +122,25 @@ public class ClassParserTest {
         ClassNode firstProfile = first.getFieldNodeByName("profile").getValueTypeClassNode();
         ClassNode secondProfile = second.getFieldNodeByName("profile").getValueTypeClassNode();
         assertSame(firstProfile, secondProfile);
+    }
+
+    @Test
+    public void clearCache_releasesTemplatesAndKeepsWindowSharing() {
+        ClassNode before = parseFixture("io/gitee/sample/dto/User.java");
+        ClassNode beforeProfile = before.getFieldNodeByName("profile").getValueTypeClassNode();
+
+        ClassParser.clearCache();
+
+        ClassNode after = parseFixture("io/gitee/sample/dto/User.java");
+        ClassNode afterProfile = after.getFieldNodeByName("profile").getValueTypeClassNode();
+        assertNotSame(beforeProfile, afterProfile);
+
+        // 清理后同一解析窗口内共享缓存仍然有效
+        ClassParser.clearCache();
+        ClassNode u1 = parseFixture("io/gitee/sample/dto/User.java");
+        ClassNode u2 = parseFixture("io/gitee/sample/dto/User.java");
+        assertSame(u1.getFieldNodeByName("profile").getValueTypeClassNode(),
+                u2.getFieldNodeByName("profile").getValueTypeClassNode());
     }
 
     @Test

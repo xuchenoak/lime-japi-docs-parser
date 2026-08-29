@@ -31,58 +31,67 @@ public class LimeJapiDocsParser {
      * @param parserConfigHandler 解析配置控制类
      */
     public static void build(ParserConfigHandler parserConfigHandler) {
-        if (parserConfigHandler == null) {
-            throw CustomException.instance("ParserConfigHandler为空");
-        }
-        if (parserConfigHandler.getParserConfig() == null) {
-            throw CustomException.instance("ParserConfig为空");
-        }
-        Set<String> javaFileDirs = parserConfigHandler.getParserConfig().getJavaFilePaths();
-        if (ListUtil.isBlank(javaFileDirs)) {
-            throw CustomException.instance("未配置Java源码路径");
-        }
-        ClassParser.addRootPaths(javaFileDirs);
-        Set<String> filterControllerPackages = parserConfigHandler.getParserConfig().getFilterControllerPackages();
-        if (ListUtil.isNotBlank(filterControllerPackages)) {
-            javaFileDirs = packageToFileDir(javaFileDirs, filterControllerPackages);
+        // 每次解析视为一次全新会话：清空历史 root 与模板缓存，保证基于最新源码
+        ClassParser.clearRootPaths();
+        ClassParser.clearCache();
+        try {
+            if (parserConfigHandler == null) {
+                throw CustomException.instance("ParserConfigHandler为空");
+            }
+            if (parserConfigHandler.getParserConfig() == null) {
+                throw CustomException.instance("ParserConfig为空");
+            }
+            Set<String> javaFileDirs = parserConfigHandler.getParserConfig().getJavaFilePaths();
             if (ListUtil.isBlank(javaFileDirs)) {
-                throw CustomException.instance("指定解析的controller包路径不存在");
+                throw CustomException.instance("未配置Java源码路径");
             }
-        }
-        List<File> javaFileList = new ArrayList<>();
-        for (String javaFileDir : javaFileDirs) {
-            List<File> files = getJavaFileListByDir(javaFileDir);
-            if (ListUtil.isBlank(files)) {
-                logger.info("该目录下无.java文件：{}", javaFileDir);
-                continue;
+            ClassParser.addRootPaths(javaFileDirs);
+            Set<String> filterControllerPackages = parserConfigHandler.getParserConfig().getFilterControllerPackages();
+            if (ListUtil.isNotBlank(filterControllerPackages)) {
+                javaFileDirs = packageToFileDir(javaFileDirs, filterControllerPackages);
+                if (ListUtil.isBlank(javaFileDirs)) {
+                    throw CustomException.instance("指定解析的controller包路径不存在");
+                }
             }
-            javaFileList.addAll(files);
-        }
-        if (ListUtil.isBlank(javaFileList)) {
-            throw CustomException.instance("未找到可解析.java文件");
-        }
-        List<ControllerData> controllerDataList = new ArrayList<>();
-        int sort = 1;
-        for (File file : javaFileList) {
-            ControllerNode controllerNode = ControllerParser.createParser(parserConfigHandler)
-                    .parse(file);
-            if (controllerNode == null) {
-                continue;
+            List<File> javaFileList = new ArrayList<>();
+            for (String javaFileDir : javaFileDirs) {
+                List<File> files = getJavaFileListByDir(javaFileDir);
+                if (ListUtil.isBlank(files)) {
+                    logger.info("该目录下无.java文件：{}", javaFileDir);
+                    continue;
+                }
+                javaFileList.addAll(files);
             }
-            ControllerData controllerData = controllerNode.getControllerData();
-            if (controllerData == null) {
-                continue;
+            if (ListUtil.isBlank(javaFileList)) {
+                throw CustomException.instance("未找到可解析.java文件");
             }
-            controllerData.setSort(sort);
-            controllerData.setCreateTime(parserConfigHandler.getParseTime());
-            controllerDataList.add(controllerData);
-            parserConfigHandler.controllerDataHandle(controllerData);
-            parserConfigHandler.controllerNodeHandle(controllerNode);
-            logger.info("\n成功解析-{}：{}", sort, controllerNode.getFullName());
-            sort++;
+            List<ControllerData> controllerDataList = new ArrayList<>();
+            int sort = 1;
+            for (File file : javaFileList) {
+                ControllerNode controllerNode = ControllerParser.createParser(parserConfigHandler)
+                        .parse(file);
+                if (controllerNode == null) {
+                    continue;
+                }
+                ControllerData controllerData = controllerNode.getControllerData();
+                if (controllerData == null) {
+                    continue;
+                }
+                controllerData.setSort(sort);
+                controllerData.setCreateTime(parserConfigHandler.getParseTime());
+                controllerDataList.add(controllerData);
+                parserConfigHandler.controllerDataHandle(controllerData);
+                parserConfigHandler.controllerNodeHandle(controllerNode);
+                logger.info("\n成功解析-{}：{}", sort, controllerNode.getFullName());
+                sort++;
+            }
+            logger.info("解析完成！共解析了{}个Controller类", controllerDataList.size());
+            parserConfigHandler.parseFinishedHandle(controllerDataList);
+        } finally {
+            // 解析结束即彻底复位：清空模板缓存并释放 root 集，服务进程不留任何驻留状态；异常中断同样复位，防止污染下次解析
+            ClassParser.clearCache();
+            ClassParser.clearRootPaths();
         }
-        logger.info("解析完成！共解析了{}个Controller类", controllerDataList.size());
-        parserConfigHandler.parseFinishedHandle(controllerDataList);
     }
 
     /**

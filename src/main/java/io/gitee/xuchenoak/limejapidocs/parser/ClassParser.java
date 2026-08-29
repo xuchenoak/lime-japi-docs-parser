@@ -58,6 +58,23 @@ public abstract class ClassParser<T extends ClassNode> {
      */
     private static final int MAX_PARSE_DEPTH = 64;
 
+    /**
+     * 清空类节点模板缓存（含线程深度记录）
+     * 一般由 {@link LimeJapiDocsParser#build} 在每次解析完成后自动调用；
+     * 直接使用 {@link ClassParser#parse} 的场景如需释放内存或保证基于最新源码，可主动调用
+     */
+    public static void clearCache() {
+        classNodeCache.clear();
+        parseDepth.remove();
+    }
+
+    /**
+     * 清空已登记的root路径集（解析范围恢复未配置状态）
+     */
+    public static void clearRootPaths() {
+        rootPathMap.clear();
+    }
+
     private static String cacheKey(String fullName) {
         List<String> sortedRoots = new ArrayList<>(rootPathMap.keySet());
         Collections.sort(sortedRoots);
