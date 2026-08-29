@@ -310,6 +310,18 @@ public class LimeJapiDocsParserTest {
     }
 
     @Test
+    public void build_recordTypeDoesNotBreakParsing() {
+        ControllerData user = controllerOf(build(), USER_CONTROLLER);
+        InterfaceData demo = interfaceOf(user, "recordDemo");
+        assertNotNull(demo);
+        assertEquals("/api/user/record", demo.getUriList().get(0));
+        FieldDataNode resData = demo.getResData();
+        assertNotNull(resData);
+        assertFalse(resData.isLastValue());
+        assertTrue(resData.getFieldInfoList() == null || resData.getFieldInfoList().isEmpty());
+    }
+
+    @Test
     public void build_parentMethodsDisabledByDefault() {
         ControllerData ext = controllerOf(build(), EXTENDS_CONTROLLER);
         Set<String> uris = interfaceUriSet(ext);

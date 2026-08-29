@@ -2,6 +2,9 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.ClassNode;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.FieldNode;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParserConfiguration;
+import com.github.javaparser.ast.CompilationUnit;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -118,5 +121,16 @@ public class ClassParserTest {
         ClassNode firstProfile = first.getFieldNodeByName("profile").getValueTypeClassNode();
         ClassNode secondProfile = second.getFieldNodeByName("profile").getValueTypeClassNode();
         assertSame(firstProfile, secondProfile);
+    }
+
+    @Test
+    public void parse_recordSyntaxHandledByJavaParser() throws Exception {
+        File file = new File(FIXTURE_ROOT, "io/gitee/sample/dto/UserRecord.java");
+        String source = new String(java.nio.file.Files.readAllBytes(file.toPath()), java.nio.charset.StandardCharsets.UTF_8);
+        CompilationUnit cu = new JavaParser(new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_25))
+                .parse(source).getResult().orElse(null);
+        assertNotNull(cu);
+        assertTrue(cu.getRecordByName("UserRecord").isPresent());
     }
 }

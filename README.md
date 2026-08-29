@@ -6,6 +6,8 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 
 支持JDK：1.8+
 
+解析语法能力：最高支持 Java 25 正式语法（含 record、record 模式、文本块等），解析不受运行 JDK 版本限制；javaparser 暂不支持的 preview 特性（如字符串模板 String Templates）会解析失败并在扫描时跳过该文件。
+
 ## 2 安装
 ### 2.1 引入依赖（方式一）
 ```xml

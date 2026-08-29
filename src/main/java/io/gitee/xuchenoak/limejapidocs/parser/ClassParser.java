@@ -2,7 +2,8 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 
 
 import cn.hutool.core.util.ClassUtil;
-import com.github.javaparser.StaticJavaParser;
+import com.github.javaparser.JavaParser;
+import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.NodeList;
@@ -180,7 +181,9 @@ public abstract class ClassParser<T extends ClassNode> {
                 logger.info("传入的javaFile不存在");
                 return null;
             }
-            CompilationUnit compilationUnit = StaticJavaParser.parse(javaFile);
+            CompilationUnit compilationUnit = new JavaParser(new ParserConfiguration()
+                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_25))
+                    .parse(javaFile).getResult().orElse(null);
             if (compilationUnit == null) {
                 logger.error("解析javaFile为compilationUnit失败: ".concat(javaFile.getAbsolutePath()));
                 return null;

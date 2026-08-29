@@ -4,6 +4,7 @@ import io.gitee.sample.dto.GenericParam;
 import io.gitee.sample.dto.SelfRef;
 import io.gitee.sample.dto.User;
 import io.gitee.sample.dto.UserQuery;
+import io.gitee.sample.dto.UserRecord;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -118,6 +119,14 @@ public class UserController {
      */
     @GetMapping("/cn")
     public String cn() {
+        return null;
+    }
+
+    /**
+     * Return a Java 21 record type
+     */
+    @GetMapping("/record")
+    public UserRecord recordDemo() {
         return null;
     }
 
