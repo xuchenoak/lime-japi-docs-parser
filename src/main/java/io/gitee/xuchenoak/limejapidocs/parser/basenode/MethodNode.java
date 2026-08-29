@@ -45,6 +45,10 @@ public class MethodNode<T extends MethodNode> extends BaseNode {
     }
 
     /**
+     * 根据参数名获取参数节点
+     *
+     * @param paramName 参数名
+     * @return 参数节点
      * @deprecated V1.0.6 起标记，库内已无使用方，待后续版本移除
      */
     @Deprecated
