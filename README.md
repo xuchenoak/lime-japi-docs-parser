@@ -154,6 +154,11 @@ public class ParserConfig {
     // 需要排除的controller类名集（非类全名，按照文件名称字符串匹配）
     private Set<String> ignoreControllerNames;
 
+    // 是否使用确定性ID（默认false）
+    // 关闭时controllerId掺入解析时间、interfaceId掺入随机UUID，每次解析结果不同；
+    // 开启后ID仅由源码内容与序号派生，多次解析结果完全一致，便于持久化权限等配置
+    private boolean deterministicId;
+
 }
 ```
 ## 4 答疑

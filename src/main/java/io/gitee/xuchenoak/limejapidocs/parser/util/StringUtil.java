@@ -200,7 +200,9 @@ public class StringUtil {
      * @param lineStr    源字符串
      * @param smallCamel 是否为小驼峰
      * @return 转化后的字符串
+     * @deprecated V1.0.6 起标记，库内已无使用方，待后续版本移除
      */
+    @Deprecated
     public static String underlineToCamel(String lineStr, boolean smallCamel) {
         if (lineStr == null || "".equals(lineStr)) {
             return "";
@@ -226,7 +228,9 @@ public class StringUtil {
      *
      * @param camelStr 源字符串
      * @return 转化后的字符串
+     * @deprecated V1.0.6 起标记，库内已无使用方，待后续版本移除
      */
+    @Deprecated
     public static String camelToUnderline(String camelStr) {
         if (camelStr == null || "".equals(camelStr)) {
             return "";

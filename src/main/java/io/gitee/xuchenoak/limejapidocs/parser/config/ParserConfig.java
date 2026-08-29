@@ -38,6 +38,18 @@ public class ParserConfig {
      */
     private Set<String> ignoreControllerNames;
 
+    /**
+     * 是否使用确定性ID（默认关闭）
+     * 关闭时 controllerId 掺入解析时间、interfaceId 掺入随机UUID，每次解析结果不同；
+     * 开启后 ID 仅由源码内容与序号派生，多次解析结果完全一致，便于持久化权限等配置
+     */
+    private boolean deterministicId = Boolean.FALSE;
+
+    public ParserConfig setDeterministicId(boolean deterministicId) {
+        this.deterministicId = deterministicId;
+        return this;
+    }
+
     public ParserConfig addJavaFilePath(String... paths) {
         if (javaFilePaths == null) {
             javaFilePaths = new HashSet<>();

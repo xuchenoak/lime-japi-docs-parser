@@ -3,6 +3,7 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
+import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
 import io.gitee.xuchenoak.limejapidocs.parser.handler.ParserConfigHandler;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.ControllerNode;
 import io.gitee.xuchenoak.limejapidocs.parser.util.ListUtil;
@@ -31,21 +32,21 @@ public class LimeJapiDocsParser {
      */
     public static void build(ParserConfigHandler parserConfigHandler) {
         if (parserConfigHandler == null) {
-            throw new RuntimeException("ParserConfigHandler为空");
+            throw CustomException.instance("ParserConfigHandler为空");
         }
         if (parserConfigHandler.getParserConfig() == null) {
-            throw new RuntimeException("ParserConfig为空");
+            throw CustomException.instance("ParserConfig为空");
         }
         Set<String> javaFileDirs = parserConfigHandler.getParserConfig().getJavaFilePaths();
         if (ListUtil.isBlank(javaFileDirs)) {
-            throw new RuntimeException("未配置Java源码路径");
+            throw CustomException.instance("未配置Java源码路径");
         }
         ClassParser.addRootPaths(javaFileDirs);
         Set<String> filterControllerPackages = parserConfigHandler.getParserConfig().getFilterControllerPackages();
         if (ListUtil.isNotBlank(filterControllerPackages)) {
             javaFileDirs = packageToFileDir(javaFileDirs, filterControllerPackages);
             if (ListUtil.isBlank(javaFileDirs)) {
-                throw new RuntimeException("指定解析的controller包路径不存在");
+                throw CustomException.instance("指定解析的controller包路径不存在");
             }
         }
         List<File> javaFileList = new ArrayList<>();
@@ -58,7 +59,7 @@ public class LimeJapiDocsParser {
             javaFileList.addAll(files);
         }
         if (ListUtil.isBlank(javaFileList)) {
-            throw new RuntimeException("未找到可解析.java文件");
+            throw CustomException.instance("未找到可解析.java文件");
         }
         List<ControllerData> controllerDataList = new ArrayList<>();
         int sort = 1;

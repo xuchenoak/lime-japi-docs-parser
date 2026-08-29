@@ -4,6 +4,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.util.ListUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.List;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class MethodNode<T extends MethodNode> extends BaseNode {
@@ -42,6 +44,10 @@ public class MethodNode<T extends MethodNode> extends BaseNode {
         paramNodeList.add(paramNode);
     }
 
+    /**
+     * @deprecated V1.0.6 起标记，库内已无使用方，待后续版本移除
+     */
+    @Deprecated
     public ParamNode getParamNodeByName(String paramName) {
         if (StringUtil.isBlank(paramName) || ListUtil.isBlank(paramNodeList)) {
             return null;

@@ -4,6 +4,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.basenode.MethodNode;
 import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.List;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class InterfaceMethodNode extends MethodNode {

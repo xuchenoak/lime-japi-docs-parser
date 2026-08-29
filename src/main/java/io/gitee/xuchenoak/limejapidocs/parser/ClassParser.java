@@ -2,7 +2,7 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 
 
 import cn.hutool.core.util.ClassUtil;
-import com.github.javaparser.JavaParser;
+import com.github.javaparser.StaticJavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.ImportDeclaration;
 import com.github.javaparser.ast.NodeList;
@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 类解析器
@@ -36,6 +37,39 @@ public abstract class ClassParser<T extends ClassNode> {
      * java文件所在包路径（必须到java文件夹） Map<String 绝对路径, String 类全名>
      */
     private static Map<String, String> rootPathMap = new HashMap<>();
+
+    /**
+     * 类节点模板缓存（root集|类全名 -> ClassNode）
+     * 同一类在同一次解析窗口内被多处引用时避免重复磁盘解析，仅缓存无泛型实参的引用结果。
+     * key 不区分具体解析器子类，统一以 ClassParser 语义缓存，避免匿名子类导致缓存分房
+     */
+    private static final Map<String, ClassNode> classNodeCache = new ConcurrentHashMap<>();
+
+    /**
+     * 当前线程类解析嵌套深度，防止过深的类依赖链导致栈溢出
+     */
+    private static final ThreadLocal<Integer> parseDepth = ThreadLocal.withInitial(() -> 0);
+
+    /**
+     * 最大类解析嵌套深度
+     */
+    private static final int MAX_PARSE_DEPTH = 64;
+
+    private static String cacheKey(String fullName) {
+        List<String> sortedRoots = new ArrayList<>(rootPathMap.keySet());
+        Collections.sort(sortedRoots);
+        return fullName + "|" + String.join(";", sortedRoots);
+    }
+
+    private ClassNode getCachedClassNode(String fullName) {
+        return classNodeCache.get(cacheKey(fullName));
+    }
+
+    private void cacheClassNode(ClassNode node) {
+        if (node != null && StringUtil.isNotBlank(node.getFullName())) {
+            classNodeCache.put(cacheKey(node.getFullName()), node);
+        }
+    }
 
     public static void addRootPaths(Set<String> rootPaths) {
         if (rootPaths == null || rootPaths.size() == 0) {
@@ -135,12 +169,18 @@ public abstract class ClassParser<T extends ClassNode> {
      * @param parentFieldName 父级字段名 用于记录标注类嵌套
      */
     private T parse(File javaFile, String parentFieldName) {
+        int depth = parseDepth.get();
+        if (depth >= MAX_PARSE_DEPTH) {
+            logger.warn("类依赖嵌套深度超过{}，已终止深层解析", MAX_PARSE_DEPTH);
+            return null;
+        }
+        parseDepth.set(depth + 1);
         try {
             if (javaFile == null || !javaFile.exists()) {
                 logger.info("传入的javaFile不存在");
                 return null;
             }
-            CompilationUnit compilationUnit = JavaParser.parse(javaFile);
+            CompilationUnit compilationUnit = StaticJavaParser.parse(javaFile);
             if (compilationUnit == null) {
                 logger.error("解析javaFile为compilationUnit失败: ".concat(javaFile.getAbsolutePath()));
                 return null;
@@ -168,6 +208,7 @@ public abstract class ClassParser<T extends ClassNode> {
             parseClassDoc(classDoc, parentFieldName);
             handleParseClassDocAfter(classNode, classDoc);
 
+            cacheClassNode(this.classNode);
             return this.classNode;
         } catch (CustomException e) {
 //            logger.info(e.getMsg());
@@ -175,6 +216,8 @@ public abstract class ClassParser<T extends ClassNode> {
         } catch (Exception e) {
             logger.error("java文件解析异常", e);
             return null;
+        } finally {
+            parseDepth.set(depth);
         }
     }
 
@@ -209,7 +252,7 @@ public abstract class ClassParser<T extends ClassNode> {
         }
 
         // 获取修饰符
-        classDoc.getModifiers().forEach(modifier -> classNode.addModifier(modifier.asString()));
+        classDoc.getModifiers().forEach(modifier -> classNode.addModifier(modifier.getKeyword().asString()));
 
         // 解析获取类全名和java文件所在包路径
         classDoc.getParentNode().get().findFirst(PackageDeclaration.class).ifPresent(packageDeclaration -> {
@@ -320,7 +363,7 @@ public abstract class ClassParser<T extends ClassNode> {
             }
             methodNode.setName(methodDeclaration.getNameAsString());
             // 获取修饰符
-            methodDeclaration.getModifiers().forEach(modifier -> methodNode.addModifier(modifier.asString()));
+            methodDeclaration.getModifiers().forEach(modifier -> methodNode.addModifier(modifier.getKeyword().asString()));
             // 解析方法的注释
             ParseUtil.parseJavaDoc(methodDeclaration.getJavadoc())
                     .forEach(tagNode -> methodNode.addTagNode(tagNode));
@@ -387,7 +430,7 @@ public abstract class ClassParser<T extends ClassNode> {
                 fieldNode.setIgnore(true);
             }
             // 获取修饰符
-            fieldDeclaration.getModifiers().forEach(modifier -> fieldNode.addModifier(modifier.asString()));
+            fieldDeclaration.getModifiers().forEach(modifier -> fieldNode.addModifier(modifier.getKeyword().asString()));
             // 获取属性
             fieldDeclaration.getVariables().ifNonEmpty(variableDeclarators -> variableDeclarators.forEach(variableDeclarator -> {
                 String fieldName = variableDeclarator.getName().asString();
@@ -546,6 +589,13 @@ public abstract class ClassParser<T extends ClassNode> {
             classNode.setName(Object.class.getSimpleName());
             classNode.setFullName(Object.class.getName());
             return classNode;
+        }
+        // 无泛型实参时优先复用模板缓存，避免重复解析同一类
+        if (!classOrInterfaceType.getTypeArguments().isPresent()) {
+            ClassNode cachedClassNode = getCachedClassNode(fullName);
+            if (cachedClassNode != null) {
+                return cachedClassNode;
+            }
         }
         // 若存在泛型则处理泛型集
         if (classOrInterfaceType.getTypeArguments().isPresent()) {

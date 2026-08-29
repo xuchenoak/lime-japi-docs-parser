@@ -4,12 +4,11 @@ import io.gitee.xuchenoak.limejapidocs.parser.util.ListUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 类节点
@@ -17,6 +16,7 @@ import java.util.stream.Collectors;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class ClassNode extends BaseNode {
@@ -72,22 +72,31 @@ public class ClassNode extends BaseNode {
     private List<ClassNode> implementsNodeList;
 
     /**
-     * 获取本类及父级属性节点（无序）
+     * 获取本类及父级属性节点（本类属性优先，父级同名属性被本类覆盖）
      *
      * @return 属性及其继承节点属性集
      */
     public List<FieldNode> getFieldNodeListAndExtends() {
         List<FieldNode> fieldNodes = new ArrayList<>();
-        if (extendsNode != null) {
-            List<FieldNode> extendsFieldNodes = extendsNode.getFieldNodeListAndExtends();
-            if (ListUtil.isNotBlank(extendsFieldNodes)) {
-                fieldNodes.addAll(extendsFieldNodes);
-            }
-        }
         if (ListUtil.isNotBlank(fieldNodeList)) {
             fieldNodes.addAll(fieldNodeList);
         }
-        return fieldNodes.stream().collect(Collectors.toMap(FieldNode::getName, Function.identity(), (k1, k2) -> k1)).values().stream().collect(Collectors.toList());
+        if (extendsNode != null) {
+            List<FieldNode> extendsFieldNodes = extendsNode.getFieldNodeListAndExtends();
+            for (FieldNode extendsFieldNode : extendsFieldNodes) {
+                if (fieldNodes.stream().noneMatch(f -> equalsName(f, extendsFieldNode))) {
+                    fieldNodes.add(extendsFieldNode);
+                }
+            }
+        }
+        return fieldNodes;
+    }
+
+    private boolean equalsName(FieldNode a, FieldNode b) {
+        if (a.getName() == null || b.getName() == null) {
+            return a.getName() == b.getName();
+        }
+        return a.getName().equals(b.getName());
     }
 
     /**

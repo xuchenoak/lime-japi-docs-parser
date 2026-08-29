@@ -124,15 +124,23 @@ public class ControllerParser extends ClassParser<ControllerNode> {
 
         long createTimestamp = parserConfigHandler.getParseTime().getTime();
         String javaFileCode = SecureUtil.md5(getJavaFile());
-        String controllerId = SecureUtil.md5(StrUtil.format("{}_{}", javaFileCode, createTimestamp));
+        boolean deterministicId = parserConfigHandler.getParserConfig() != null
+                && Optional.ofNullable(parserConfigHandler.getParserConfig().isDeterministicId()).orElse(false);
+        String controllerIdSeed = deterministicId
+                ? javaFileCode
+                : StrUtil.format("{}_{}", javaFileCode, createTimestamp);
+        String controllerId = SecureUtil.md5(controllerIdSeed);
         List<InterfaceData> interfaceDataList = new ArrayList<>();
         int flag = 1;
         for (InterfaceMethodNode interfaceMethodNode : interfaceMethodNodeList) {
             if (ListUtil.isBlank(interfaceMethodNode.getUriList())) {
                 continue;
             }
+            String interfaceIdSeed = deterministicId
+                    ? StrUtil.format("{}_{}_{}", controllerId, interfaceMethodNode.getName(), flag)
+                    : StrUtil.format("{}_{}_{}", controllerId, IdUtil.fastSimpleUUID(), flag);
             interfaceDataList.add(new InterfaceData(
-                    SecureUtil.md5(StrUtil.format("{}_{}_{}", controllerId, IdUtil.fastSimpleUUID(), flag)),
+                    SecureUtil.md5(interfaceIdSeed),
                     controllerId,
                     interfaceMethodNode.getName(),
                     interfaceMethodNode.getComment(),
@@ -203,10 +211,12 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                 // 若为重写父类的方法则使用父类的注解和子类的方法进行解析（重写的子类没加注解则以父类注解为主）
                 if (overrideMethodMap.containsKey(overrideKey)) {
                     MethodNode childMethodNode = overrideMethodMap.get(overrideKey);
-                    // 把父级的注解给子集方法
-                    childMethodNode.setAnnotationNodeList(parentMethodNode.getAnnotationNodeList());
-                    childMethodNode.setComment(parentMethodNode.getComment());
-                    InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(childMethodNode, controllerNode);
+                    // 拷贝子类方法节点，避免原地修改 controllerNode 中已被其它地方引用的 MethodNode
+                    MethodNode overrideMethodNode = new MethodNode(childMethodNode);
+                    // 把父级的注解给拷贝后的方法
+                    overrideMethodNode.setAnnotationNodeList(parentMethodNode.getAnnotationNodeList());
+                    overrideMethodNode.setComment(parentMethodNode.getComment());
+                    InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(overrideMethodNode, controllerNode);
                     if (interfaceMethodNode != null) {
                         parentInterfaceMethodNodeList.add(interfaceMethodNode);
                     }

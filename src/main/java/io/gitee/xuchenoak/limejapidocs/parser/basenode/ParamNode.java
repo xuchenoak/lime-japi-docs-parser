@@ -2,6 +2,7 @@ package io.gitee.xuchenoak.limejapidocs.parser.basenode;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 /**
@@ -10,6 +11,7 @@ import lombok.NoArgsConstructor;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class ParamNode extends BaseNode {

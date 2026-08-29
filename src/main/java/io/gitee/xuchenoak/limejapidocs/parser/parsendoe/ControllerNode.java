@@ -4,6 +4,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.basenode.ClassNode;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
@@ -15,6 +16,7 @@ import java.util.List;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class ControllerNode extends ClassNode {
