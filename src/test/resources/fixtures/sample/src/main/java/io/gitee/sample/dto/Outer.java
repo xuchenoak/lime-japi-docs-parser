@@ -47,6 +47,10 @@ public class Outer {
     /**
      * Nested record inside outer type
      */
-    public record NestedRec(String key, Long value) {
+    public record NestedRec(
+            /** 键名 */
+            String key,
+            /** 值 */
+            Long value) {
     }
 }

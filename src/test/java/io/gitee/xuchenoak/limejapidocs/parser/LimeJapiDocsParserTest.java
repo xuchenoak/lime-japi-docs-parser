@@ -320,10 +320,16 @@ public class LimeJapiDocsParserTest {
         assertFalse(resData.isLastValue());
         assertNotNull(resData.getFieldInfoList());
         assertEquals(2, resData.getFieldInfoList().size());
-        assertTrue(resData.getFieldInfoList().stream()
-                .anyMatch(f -> "username".equals(f.getName()) && "String".equals(f.getType())));
-        assertTrue(resData.getFieldInfoList().stream()
-                .anyMatch(f -> "age".equals(f.getName()) && "Integer".equals(f.getType())));
+        FieldInfo username = resData.getFieldInfoList().stream()
+                .filter(f -> "username".equals(f.getName())).findFirst().orElse(null);
+        assertNotNull(username);
+        assertEquals("String", username.getType());
+        assertEquals("用户名", username.getComment());
+        FieldInfo age = resData.getFieldInfoList().stream()
+                .filter(f -> "age".equals(f.getName())).findFirst().orElse(null);
+        assertNotNull(age);
+        assertEquals("Integer", age.getType());
+        assertEquals("年龄", age.getComment());
     }
 
     @Test
@@ -350,10 +356,15 @@ public class LimeJapiDocsParserTest {
         assertNotNull(resData);
         assertFalse(resData.isLastValue());
         assertNotNull(resData.getFieldInfoList());
-        assertTrue(resData.getFieldInfoList().stream()
-                .anyMatch(f -> "key".equals(f.getName()) && "String".equals(f.getType())));
-        assertTrue(resData.getFieldInfoList().stream()
-                .anyMatch(f -> "value".equals(f.getName()) && "Long".equals(f.getType())));
+        FieldInfo key = resData.getFieldInfoList().stream()
+                .filter(f -> "key".equals(f.getName())).findFirst().orElse(null);
+        assertNotNull(key);
+        assertEquals("String", key.getType());
+        assertEquals("键名", key.getComment());
+        FieldInfo value = resData.getFieldInfoList().stream()
+                .filter(f -> "value".equals(f.getName())).findFirst().orElse(null);
+        assertNotNull(value);
+        assertEquals("Long", value.getType());
     }
 
     @Test

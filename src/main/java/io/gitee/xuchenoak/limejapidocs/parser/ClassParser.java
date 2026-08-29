@@ -413,6 +413,7 @@ public abstract class ClassParser<T extends ClassNode> {
 
     /**
      * 解析 record 组件为属性节点
+     * 组件注释支持两种写法：组件声明处 javadoc；或 record 类级 javadoc 的 @param（按组件名匹配回填）
      */
     private void parseRecordComponents(ClassNode target, NodeList<Parameter> parameters) {
         if (ListUtil.isBlank(parameters)) {
@@ -424,15 +425,38 @@ public abstract class ClassParser<T extends ClassNode> {
             fieldNode.setValueTypeClassNode(parseClassByType(parameter.getType(), fieldNode));
             ParseUtil.parseAnnotation(parameter.getAnnotations())
                     .forEach(annotationNode -> fieldNode.addAnnotationNode(annotationNode));
-            // record 组件注释（JavaDoc形式的记录组件的 javadoc）
+            // 写法一：组件声明处注释（JavaDoc形式）
             if (parameter.getComment().isPresent() && parameter.getComment().get() instanceof JavadocComment) {
                 JavadocComment javadocComment = (JavadocComment) parameter.getComment().get();
                 ParseUtil.parseJavaDoc(Optional.of(javadocComment.parse()))
                         .forEach(tagNode -> fieldNode.addTagNode(tagNode));
             }
             fieldNode.lastBuild();
+            // 写法二：record 类级 javadoc 的 @param（tagKey=组件名）回填组件注释
+            if (StringUtil.isBlank(fieldNode.getComment())) {
+                TagNode paramTagNode = getParamTagNode(target, fieldNode.getName());
+                if (paramTagNode != null) {
+                    fieldNode.setComment(paramTagNode.getTagValue());
+                }
+            }
             target.addFieldNode(fieldNode);
         }
+    }
+
+    /**
+     * 从类节点 javadoc 标签集中匹配 @param 标签（tagName=param）
+     */
+    private TagNode getParamTagNode(ClassNode target, String tagKey) {
+        if (target.getTagNodeList() == null || StringUtil.isBlank(tagKey)) {
+            return null;
+        }
+        for (Object objectTagNode : target.getTagNodeList()) {
+            TagNode tagNode = (TagNode) objectTagNode;
+            if ("param".equals(tagNode.getTagName()) && tagKey.equals(tagNode.getTagKey())) {
+                return tagNode;
+            }
+        }
+        return null;
     }
 
     /**
