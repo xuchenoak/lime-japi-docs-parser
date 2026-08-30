@@ -108,6 +108,12 @@ public interface ParserConfigHandler {
             case "BigDecimal":
                 defaultValue = String.valueOf(Math.random());
                 break;
+            case "Boolean":
+                defaultValue = String.valueOf(RandomUtil.randomBoolean());
+                break;
+            case "Character":
+                defaultValue = String.valueOf((char) ('A' + RandomUtil.randomInt(26)));
+                break;
             case "Date":
                 String format = "yyyy-MM-dd HH:mm:ss";
                 if (ListUtil.isNotBlank(annotationNodeList)) {

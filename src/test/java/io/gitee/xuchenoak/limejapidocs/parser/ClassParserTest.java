@@ -244,4 +244,46 @@ public class ClassParserTest {
         assertEquals("Inner", innerType.getName());
         assertNotNull(innerType.getFieldNodeByName("innerName"));
     }
+
+    @Test
+    public void parse_fullyQualifiedTypeNamesResolve() {
+        ClassNode node = parseFixture("io/gitee/sample/dto/FullyQualifiedUse.java");
+        assertNotNull(node);
+        assertEquals("Date", node.getFieldNodeByName("createTime").getValueTypeClassNode().getName());
+        assertEquals("Entry", node.getFieldNodeByName("entry").getValueTypeClassNode().getName());
+    }
+
+    @Test
+    public void parse_samePackageInnerWithoutImportResolves() {
+        ClassNode node = parseFixture("io/gitee/sample/dto/OuterUse.java");
+        assertNotNull(node);
+        ClassNode innerType = node.getFieldNodeByName("inner").getValueTypeClassNode();
+        assertEquals("Inner", innerType.getName());
+        assertNotNull(innerType.getFieldNodeByName("innerName"));
+    }
+
+    @Test
+    public void parse_jdkNestedClassAndDoubleGeneric() {
+        ClassNode node = parseFixture("io/gitee/sample/dto/EdgeTypes.java");
+        assertNotNull(node);
+        assertEquals("Entry", node.getFieldNodeByName("entry").getValueTypeClassNode().getName());
+
+        ClassNode nestedList = node.getFieldNodeByName("nestedList").getValueTypeClassNode();
+        assertTrue(nestedList.isArray());
+        ClassNode innerList = nestedList.getGenericityNodeList().get(0);
+        assertTrue(innerList.isArray());
+        assertEquals("User", innerList.getGenericityNodeList().get(0).getName());
+    }
+
+    @Test
+    public void parse_deepNestedChainDoesNotCrash() throws Exception {
+        ClassNode node = parseFixture("io/gitee/sample/dto/DeepChain.java");
+        assertNotNull(node);
+        assertEquals("DeepChain", node.getName());
+        ClassNode n1 = node.getFieldNodeByName("next").getValueTypeClassNode();
+        assertEquals("N1", n1.getName());
+        ClassNode n2 = n1.getFieldNodeByName("next").getValueTypeClassNode();
+        assertEquals("N2", n2.getName());
+        assertNotNull(n2.getFieldNodeByName("next"));
+    }
 }

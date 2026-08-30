@@ -44,6 +44,11 @@ public class ParseSession {
     private int parseDepth = 0;
 
     /**
+     * 缓存key的root集排序后缀（root集合变化时失效重建）
+     */
+    private String sortedRootKey;
+
+    /**
      * 添加root路径（校验通过才加入）
      *
      * @param rootPath java源码绝对路径，必须以 java 结尾、不带尾部 /
@@ -53,6 +58,7 @@ public class ParseSession {
             return;
         }
         rootPaths.add(rootPath);
+        sortedRootKey = null;
     }
 
     /**
@@ -83,6 +89,7 @@ public class ParseSession {
      */
     public void clearRootPaths() {
         rootPaths.clear();
+        sortedRootKey = null;
     }
 
     /**
@@ -116,12 +123,15 @@ public class ParseSession {
     }
 
     /**
-     * 构建缓存key（root集与类全名共同决定）
+     * 构建缓存key（root集排序后缀惰性缓存，与类全名共同决定）
      */
     String cacheKey(String fullName) {
-        List<String> sortedRoots = new ArrayList<>(rootPaths);
-        Collections.sort(sortedRoots);
-        return fullName + "|" + String.join(";", sortedRoots);
+        if (sortedRootKey == null) {
+            List<String> sortedRoots = new ArrayList<>(rootPaths);
+            Collections.sort(sortedRoots);
+            sortedRootKey = String.join(";", sortedRoots);
+        }
+        return fullName + "|" + sortedRootKey;
     }
 
     /**

@@ -7,8 +7,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 /**
  * 类节点
@@ -82,43 +81,57 @@ public class ClassNode extends BaseNode {
      * @return 属性及其继承节点属性集
      */
     public List<FieldNode> getFieldNodeListAndExtends() {
-        List<FieldNode> fieldNodes = new ArrayList<>();
-        if (ListUtil.isNotBlank(fieldNodeList)) {
-            fieldNodes.addAll(fieldNodeList);
-        }
-        if (extendsNode != null) {
-            List<FieldNode> extendsFieldNodes = extendsNode.getFieldNodeListAndExtends();
-            for (FieldNode extendsFieldNode : extendsFieldNodes) {
-                if (fieldNodes.stream().noneMatch(f -> equalsName(f, extendsFieldNode))) {
-                    fieldNodes.add(extendsFieldNode);
-                }
-            }
-        }
-        return fieldNodes;
-    }
-
-    private boolean equalsName(FieldNode a, FieldNode b) {
-        if (a.getName() == null || b.getName() == null) {
-            return a.getName() == b.getName();
-        }
-        return a.getName().equals(b.getName());
+        Map<String, FieldNode> byName = new LinkedHashMap<>();
+        collectOwnAndExtends(this, byName);
+        return new ArrayList<>(byName.values());
     }
 
     /**
-     * 注入本类及父级属性节点（有序）
+     * 递归收集本类及父级属性（本类优先，同名父级属性被本类覆盖，保持声明顺序）
+     */
+    private static void collectOwnAndExtends(ClassNode node, Map<String, FieldNode> byName) {
+        if (ListUtil.isNotBlank(node.fieldNodeList)) {
+            for (FieldNode fieldNode : node.fieldNodeList) {
+                String name = fieldNode.getName();
+                if (name != null) {
+                    byName.putIfAbsent(name, fieldNode);
+                }
+            }
+        }
+        if (node.extendsNode != null) {
+            collectOwnAndExtends(node.extendsNode, byName);
+        }
+    }
+
+    /**
+     * 注入本类及父级属性节点（有序，本类优先，父级同名属性不重复注入）
      *
      * @param fieldNodes 注入本类及父级属性节点集
      */
     public void injectFieldNodeListAndExtends(List<FieldNode> fieldNodes) {
+        Set<String> seen = new HashSet<>();
+        for (FieldNode fieldNode : fieldNodes) {
+            if (fieldNode.getName() != null) {
+                seen.add(fieldNode.getName());
+            }
+        }
+        injectInto(fieldNodes, seen);
+    }
+
+    /**
+     * 递归注入本类及父级属性
+     */
+    private void injectInto(List<FieldNode> fieldNodes, Set<String> seen) {
         if (ListUtil.isNotBlank(fieldNodeList)) {
             for (FieldNode fieldNode : fieldNodeList) {
-                if (fieldNodes.stream().filter(f -> f.getName().equals(fieldNode.getName())).count() < 1) {
+                String name = fieldNode.getName();
+                if (name != null && seen.add(name)) {
                     fieldNodes.add(fieldNode);
                 }
             }
         }
         if (extendsNode != null) {
-            extendsNode.injectFieldNodeListAndExtends(fieldNodes);
+            extendsNode.injectInto(fieldNodes, seen);
         }
     }
 

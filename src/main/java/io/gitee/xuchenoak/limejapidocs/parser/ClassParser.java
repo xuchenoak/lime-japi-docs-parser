@@ -36,6 +36,13 @@ public abstract class ClassParser<T extends ClassNode> {
     private static final Logger logger = LoggerFactory.getLogger(ClassParser.class);
 
     /**
+     * 解析器实例（固定 JAVA_25 语言级别）。
+     * 采用线程局部共享：同一线程内复用避免重复构建，跨线程天然隔离（实测 JavaParser 实例跨线程并发 parse 不可靠）
+     */
+    private static final ThreadLocal<JavaParser> JAVA_PARSER = ThreadLocal.withInitial(() -> new JavaParser(
+            new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_25)));
+
+    /**
      * 最大类解析嵌套深度
      */
     private static final int MAX_PARSE_DEPTH = 64;
@@ -167,6 +174,27 @@ public abstract class ClassParser<T extends ClassNode> {
         };
     }
 
+    /**
+     * 加载类；对 JDK 内部嵌套类支持 binary 名（java.util.Map.Entry → java.util.Map$Entry）
+     */
+    private Class<?> loadClassWithNestedFallback(String fullName) {
+        try {
+            return ClassUtil.loadClass(fullName);
+        } catch (Exception e) {
+//            logger.info("读取类异常: ".concat(fullName));
+        }
+        int dot = fullName.lastIndexOf('.');
+        if (dot > 0) {
+            String binaryName = fullName.substring(0, dot).concat("$").concat(fullName.substring(dot + 1));
+            try {
+                return ClassUtil.loadClass(binaryName);
+            } catch (Exception ex) {
+//                logger.info("读取类异常(binary): ".concat(binaryName));
+            }
+        }
+        return null;
+    }
+
     public File getJavaFile() {
         return javaFile;
     }
@@ -175,6 +203,11 @@ public abstract class ClassParser<T extends ClassNode> {
      * 解析标记：一个解析器实例只应解析一次（运行一次的实例语义），防止实例节点状态被二次解析复用污染
      */
     private boolean parsedOnce = false;
+
+    /**
+     * 当前正在填充的类型节点全名（顶层层为文件名主类全名，嵌套层为其嵌套全名），用于简单名嵌套类型引用的缓存定位
+     */
+    private String currentTypeFullName;
 
     /**
      * 解析方法
@@ -225,9 +258,7 @@ public abstract class ClassParser<T extends ClassNode> {
                 logger.info("传入的javaFile不存在");
                 return null;
             }
-            CompilationUnit compilationUnit = new JavaParser(new ParserConfiguration()
-                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_25))
-                    .parse(javaFile).getResult().orElse(null);
+            CompilationUnit compilationUnit = JAVA_PARSER.get().parse(javaFile).getResult().orElse(null);
             if (compilationUnit == null) {
                 logger.error("解析javaFile为compilationUnit失败: ".concat(javaFile.getAbsolutePath()));
                 return null;
@@ -392,10 +423,13 @@ public abstract class ClassParser<T extends ClassNode> {
         if (cu != null) {
             for (ImportDeclaration importDeclaration : cu.findAll(ImportDeclaration.class)) {
                 String fullName = importDeclaration.getName().asString();
-                String tokenRange = importDeclaration.getTokenRange().get().toString();
-                tokenRange = tokenRange.substring(0, tokenRange.lastIndexOf(";")).trim();
-                if (tokenRange.contains("*")) {
-                    fullName = fullName.concat(".*");
+                // 防御：tokenRange 缺失时直接按导入名处理
+                if (importDeclaration.getTokenRange().isPresent()) {
+                    String tokenRange = importDeclaration.getTokenRange().get().toString();
+                    tokenRange = tokenRange.substring(0, tokenRange.lastIndexOf(";")).trim();
+                    if (tokenRange.contains("*")) {
+                        fullName = fullName.concat(".*");
+                    }
                 }
                 String className = null;
                 if (StringUtil.isNotBlank(fullName) && fullName.lastIndexOf(".") > 0) {
@@ -423,6 +457,8 @@ public abstract class ClassParser<T extends ClassNode> {
      * 解析类的成员（属性/方法/继承/实现接口），并完成节点收尾
      */
     private void parseMembersAndExtends(ClassNode target, TypeDeclaration<?> typeDoc, String parentFieldName) {
+        // 记录当前填充的类型节点上下文，供简单名嵌套引用定位缓存
+        this.currentTypeFullName = target.getFullName();
         if (typeDoc instanceof NodeWithMembers) {
             NodeWithMembers<?> membersDoc = (NodeWithMembers<?>) typeDoc;
             parseField(target, membersDoc.getFields());
@@ -557,18 +593,23 @@ public abstract class ClassParser<T extends ClassNode> {
             return dottedName;
         }
         String packageName = this.classNode.getPackageName();
+        // 已是全限定名（含当前包前缀或 java.* 等），原样返回
         if (StringUtil.isNotBlank(packageName) && dottedName.startsWith(packageName.concat("."))) {
             return dottedName;
         }
         String outerSimple = dottedName.substring(0, firstDot);
         String remain = dottedName.substring(firstDot + 1);
+        // 最外层与 import 匹配则拼接全名（如 import a.b.Outer 后用 Outer.Inner）
         List<ImportNode> importNodes = this.classNode.getImportNodeByClassName(outerSimple);
         if (ListUtil.isNotBlank(importNodes)) {
             return importNodes.get(0).getFullName().concat(".").concat(remain);
         }
-        String samePackage = this.classNode.getFullNameFromPackageName(dottedName);
-        if (StringUtil.isNotBlank(samePackage)) {
-            return samePackage;
+        // 同包引用（如 Outer.Inner 且未 import）：仅当该包下文件确实存在时才拼接，否则原样返回避免拼造错误全名
+        if (StringUtil.isNotBlank(packageName)) {
+            String samePackage = packageName.concat(".").concat(dottedName);
+            if (resolveJavaFileForFullName(samePackage) != null) {
+                return samePackage;
+            }
         }
         return dottedName;
     }
@@ -818,10 +859,24 @@ public abstract class ClassParser<T extends ClassNode> {
                     }
                 }
 
-                // 可能是当前编译单元内的嵌套类型（内部类以简单名引用，外层已解析挂载）
-                if (StringUtil.isNotBlank(this.classNode.getFullName())) {
-                    ClassNode nestedCached = session.getCachedClassNode(this.classNode.getFullName().concat(".").concat(className));
-                    if (nestedCached != null) {
+                // 可能是当前类型体内的嵌套类型（内部类以简单名引用，从当前层逐层向上定位）
+                if (StringUtil.isNotBlank(currentTypeFullName)) {
+                    String prefix = currentTypeFullName;
+                    ClassNode nestedCached;
+                    boolean hit = false;
+                    do {
+                        nestedCached = session.getCachedClassNode(prefix.concat(".").concat(className));
+                        if (nestedCached != null) {
+                            hit = true;
+                            break;
+                        }
+                        int idx = prefix.lastIndexOf('.');
+                        if (idx <= 0) {
+                            break;
+                        }
+                        prefix = prefix.substring(0, idx);
+                    } while (true);
+                    if (hit) {
                         return nestedCached;
                     }
                 }
@@ -885,11 +940,7 @@ public abstract class ClassParser<T extends ClassNode> {
         else if (fullName.startsWith(ParseUtil.JAVA_PACKAGE_PREFIX)) {
             // 去除泛型
             fullName = fullName.replaceAll("<.*>", "");
-            try {
-                clazz = ClassUtil.loadClass(fullName);
-            } catch (Exception e) {
-//                logger.info("读取类异常: ".concat(fullName));
-            }
+            clazz = loadClassWithNestedFallback(fullName);
             if (clazz != null) {
                 if (Collection.class.isAssignableFrom(clazz)) {
                     classNode.setArray(true);

@@ -91,10 +91,10 @@ public class ControllerParser extends ClassParser<ControllerNode> {
 
     private ControllerParser handler(ParserConfigHandler parserConfigHandler) {
         if (parserConfigHandler == null) {
-            throw new RuntimeException("ParserConfigHandler为空");
+            throw CustomException.instance("ParserConfigHandler为空");
         }
         if (parserConfigHandler.getParseTime() == null) {
-            throw new RuntimeException("ParseTime为空");
+            throw CustomException.instance("ParseTime为空");
         }
         this.parserConfigHandler = parserConfigHandler;
         return this;
@@ -481,7 +481,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         if (uri == null) {
             return false;
         }
-        uri = delPrefixAndSuffixRod(uri);
+        uri = delPrefixAndSuffixSlash(uri);
         StringBuilder realBuilder = null;
         if (ListUtil.isBlank(baseUriList)) {
             realBuilder = new StringBuilder("/");
@@ -491,7 +491,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         for (String baseUri : baseUriList) {
             realBuilder = new StringBuilder("/");
             if (StringUtil.isNotBlank(baseUri)) {
-                baseUri = delPrefixAndSuffixRod(baseUri);
+                baseUri = delPrefixAndSuffixSlash(baseUri);
             }
             if (StringUtil.isNotBlank(baseUri)) {
                 realBuilder.append(baseUri);
@@ -509,7 +509,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
      *
      * @return
      */
-    private String delPrefixAndSuffixRod(String uri) {
+    private String delPrefixAndSuffixSlash(String uri) {
         if (uri == null) {
             return null;
         }
