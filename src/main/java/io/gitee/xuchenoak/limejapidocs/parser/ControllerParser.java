@@ -58,12 +58,35 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         return parserConfigHandler.getParserConfig().getLastValueTypeFullName().contains(fullName);
     }
 
+    /**
+     * 构造解析器实例（自带全新解析会话）
+     */
     private ControllerParser() {
         super(new ControllerNode());
     }
 
+    /**
+     * 构造解析器实例（复用指定解析会话，供一键解析内多个controller共享类模板缓存与root路径）
+     *
+     * @param session 解析会话
+     */
+    private ControllerParser(ParseSession session) {
+        super(session, new ControllerNode());
+    }
+
     public static ControllerParser createParser(ParserConfigHandler parserConfigHandler) {
         return new ControllerParser().handler(parserConfigHandler);
+    }
+
+    /**
+     * 使用指定解析会话创建解析器（同一会话内的多个解析器共享类模板缓存与root路径）
+     *
+     * @param parserConfigHandler 解析配置回调
+     * @param session             解析会话；为 null 时自动创建新会话
+     * @return 控制器解析器实例
+     */
+    public static ControllerParser createParser(ParserConfigHandler parserConfigHandler, ParseSession session) {
+        return new ControllerParser(session).handler(parserConfigHandler);
     }
 
     private ControllerParser handler(ParserConfigHandler parserConfigHandler) {

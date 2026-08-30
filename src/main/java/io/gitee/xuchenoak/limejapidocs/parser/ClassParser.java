@@ -25,7 +25,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 类解析器
@@ -37,86 +36,14 @@ public abstract class ClassParser<T extends ClassNode> {
     private static final Logger logger = LoggerFactory.getLogger(ClassParser.class);
 
     /**
-     * java文件所在包路径（必须到java文件夹） Map<String 绝对路径, String 类全名>
-     */
-    private static Map<String, String> rootPathMap = new HashMap<>();
-
-    /**
-     * 类节点模板缓存（root集|类全名 -> ClassNode）
-     * 同一类在同一次解析窗口内被多处引用时避免重复磁盘解析，仅缓存无泛型实参的引用结果。
-     * key 不区分具体解析器子类，统一以 ClassParser 语义缓存，避免匿名子类导致缓存分房
-     */
-    private static final Map<String, ClassNode> classNodeCache = new ConcurrentHashMap<>();
-
-    /**
-     * 当前线程类解析嵌套深度，防止过深的类依赖链导致栈溢出
-     */
-    private static final ThreadLocal<Integer> parseDepth = ThreadLocal.withInitial(() -> 0);
-
-    /**
      * 最大类解析嵌套深度
      */
     private static final int MAX_PARSE_DEPTH = 64;
 
     /**
-     * 清空类节点模板缓存（含线程深度记录）
-     * 一般由 {@link LimeJapiDocsParser#build} 在每次解析完成后自动调用；
-     * 直接使用 {@link ClassParser#parse} 的场景如需释放内存或保证基于最新源码，可主动调用
+     * 解析会话：本解析器实例（含其递归子解析器）共享的解析状态（root路径、类模板缓存、嵌套深度）
      */
-    public static void clearCache() {
-        classNodeCache.clear();
-        parseDepth.remove();
-    }
-
-    /**
-     * 清空已登记的root路径集（解析范围恢复未配置状态）
-     */
-    public static void clearRootPaths() {
-        rootPathMap.clear();
-    }
-
-    private static String cacheKey(String fullName) {
-        List<String> sortedRoots = new ArrayList<>(rootPathMap.keySet());
-        Collections.sort(sortedRoots);
-        return fullName + "|" + String.join(";", sortedRoots);
-    }
-
-    private ClassNode getCachedClassNode(String fullName) {
-        return classNodeCache.get(cacheKey(fullName));
-    }
-
-    private void cacheClassNode(ClassNode node) {
-        if (node != null && StringUtil.isNotBlank(node.getFullName())) {
-            classNodeCache.put(cacheKey(node.getFullName()), node);
-        }
-    }
-
-    public static void addRootPaths(Set<String> rootPaths) {
-        if (rootPaths == null || rootPaths.size() == 0) {
-            return;
-        }
-        for (String rootPath : rootPaths) {
-            if (!checkRootPath(rootPath)) {
-                continue;
-            }
-            rootPathMap.put(rootPath, null);
-        }
-    }
-
-    public static void addRootPath(String rootPath) {
-        if (!checkRootPath(rootPath)) {
-            return;
-        }
-        rootPathMap.put(rootPath, null);
-    }
-
-    public static boolean checkRootPath(String rootPath) {
-        if (StringUtil.isNotBlank(rootPath) && rootPath.endsWith("java")) {
-            return true;
-        }
-        logger.info("rootPath：{}不符合要求，请保持路径末尾为“java”，无需加“/”或“\\”", rootPath);
-        return false;
-    }
+    private final ParseSession session;
 
     /**
      * 类节点
@@ -143,17 +70,111 @@ public abstract class ClassParser<T extends ClassNode> {
      */
     private Map<String, String> parentNodeNameMap;
 
+    /**
+     * 构造解析器实例（自带全新解析会话）
+     */
     public ClassParser() {
-        this.classNode = (T) new ClassNode();
+        this(new ParseSession(), null);
     }
 
+    /**
+     * 构造解析器实例（自带全新解析会话）
+     *
+     * @param classNode 预置的类节点（通常为子类实现专用节点，如 ControllerNode）
+     */
     public ClassParser(T classNode) {
-        this.classNode = classNode;
+        this(new ParseSession(), classNode);
+    }
+
+    /**
+     * 构造解析器实例（复用指定解析会话，用于多解析器共享root路径与类模板缓存）
+     *
+     * @param session 解析会话；为 null 时自动创建新会话
+     */
+    public ClassParser(ParseSession session) {
+        this(session, null);
+    }
+
+    /**
+     * 构造解析器实例（复用指定解析会话）
+     *
+     * @param session   解析会话；为 null 时自动创建新会话
+     * @param classNode 预置的类节点；为 null 时自动创建普通 ClassNode
+     */
+    public ClassParser(ParseSession session, T classNode) {
+        this.session = session != null ? session : new ParseSession();
+        this.classNode = classNode != null ? classNode : (T) new ClassNode();
+    }
+
+    /**
+     * 添加root路径（解析引用类时的根查找范围）
+     *
+     * @param rootPath java源码绝对路径，必须以 java 结尾、不带尾部 / 或 \
+     */
+    public void addRootPath(String rootPath) {
+        session.addRootPath(rootPath);
+    }
+
+    /**
+     * 批量添加root路径
+     *
+     * @param rootPaths java源码绝对路径集
+     */
+    public void addRootPaths(Set<String> rootPaths) {
+        session.addRootPaths(rootPaths);
+    }
+
+    /**
+     * 清空当前会话的类模板缓存
+     */
+    public void clearCache() {
+        session.clearCache();
+    }
+
+    /**
+     * 清空当前会话的root路径集
+     */
+    public void clearRootPaths() {
+        session.clearRootPaths();
+    }
+
+    /**
+     * 校验root路径（静态纯校验，无状态）
+     *
+     * @param rootPath 待校验的root路径
+     * @return 路径以 java 结尾且非空时返回 true
+     */
+    public static boolean checkRootPath(String rootPath) {
+        return ParseSession.isValidRootPath(rootPath);
+    }
+
+    /**
+     * 获取当前会话root路径集（不可修改视图）
+     *
+     * @return 本会话已登记的root路径集
+     */
+    public Set<String> getSessionRootPaths() {
+        return session.getRootPaths();
+    }
+
+    /**
+     * 创建共享当前会话的子解析器（递归引用解析用，session 自动继承）
+     *
+     * @return 与当前会话绑定的普通类解析器
+     */
+    private ClassParser<ClassNode> newChildParser() {
+        return new ClassParser<ClassNode>(this.session) {
+        };
     }
 
     public File getJavaFile() {
         return javaFile;
     }
+
+    /**
+     * 解析标记：一个解析器实例只应解析一次（运行一次的实例语义），防止实例节点状态被二次解析复用污染
+     */
+    private boolean parsedOnce = false;
 
     /**
      * 解析方法
@@ -162,6 +183,10 @@ public abstract class ClassParser<T extends ClassNode> {
      * @return 解析类节点
      */
     public T parse(File javaFile) {
+        if (parsedOnce) {
+            throw new IllegalStateException("ClassParser实例仅支持解析一次，如需再次解析请新建实例");
+        }
+        parsedOnce = true;
         return parse(javaFile, null);
     }
 
@@ -189,12 +214,12 @@ public abstract class ClassParser<T extends ClassNode> {
      * @param parentFieldName 父级字段名 用于记录标注类嵌套
      */
     private T parse(File javaFile, String parentFieldName) {
-        int depth = parseDepth.get();
+        int depth = session.getParseDepth();
         if (depth >= MAX_PARSE_DEPTH) {
             logger.warn("类依赖嵌套深度超过{}，已终止深层解析", MAX_PARSE_DEPTH);
             return null;
         }
-        parseDepth.set(depth + 1);
+        session.setParseDepth(depth + 1);
         try {
             if (javaFile == null || !javaFile.exists()) {
                 logger.info("传入的javaFile不存在");
@@ -233,7 +258,7 @@ public abstract class ClassParser<T extends ClassNode> {
                 handleParseClassDocAfter(classNode, typeDoc);
             }
 
-            cacheClassNode(this.classNode);
+            session.cacheClassNode(this.classNode);
             return this.classNode;
         } catch (CustomException e) {
 //            logger.info(e.getMsg());
@@ -242,7 +267,7 @@ public abstract class ClassParser<T extends ClassNode> {
             logger.error("java文件解析异常", e);
             return null;
         } finally {
-            parseDepth.set(depth);
+            session.setParseDepth(depth);
         }
     }
 
@@ -512,7 +537,7 @@ public abstract class ClassParser<T extends ClassNode> {
         parseMembersAndExtends(nestedNode, nestedDoc, parentFieldName);
         handleParseClassDocAfter(nestedNode, nestedDoc);
         target.addNestedClassNode(nestedNode);
-        cacheClassNode(nestedNode);
+        session.cacheClassNode(nestedNode);
     }
 
     private CompilationUnit findCompilationUnit(TypeDeclaration<?> typeDoc) {
@@ -795,7 +820,7 @@ public abstract class ClassParser<T extends ClassNode> {
 
                 // 可能是当前编译单元内的嵌套类型（内部类以简单名引用，外层已解析挂载）
                 if (StringUtil.isNotBlank(this.classNode.getFullName())) {
-                    ClassNode nestedCached = getCachedClassNode(this.classNode.getFullName().concat(".").concat(className));
+                    ClassNode nestedCached = session.getCachedClassNode(this.classNode.getFullName().concat(".").concat(className));
                     if (nestedCached != null) {
                         return nestedCached;
                     }
@@ -829,7 +854,7 @@ public abstract class ClassParser<T extends ClassNode> {
         }
         // 无泛型实参时优先复用模板缓存，避免重复解析同一类
         if (!classOrInterfaceType.getTypeArguments().isPresent()) {
-            ClassNode cachedClassNode = getCachedClassNode(fullName);
+            ClassNode cachedClassNode = session.getCachedClassNode(fullName);
             if (cachedClassNode != null) {
                 return cachedClassNode;
             }
@@ -880,11 +905,10 @@ public abstract class ClassParser<T extends ClassNode> {
                 // 内部类/嵌套类引用：定位外层真实文件解析（会连带解析嵌套类型并缓存），再从缓存取目标
                 File javaFile = resolveJavaFileForFullName(fullName);
                 if (javaFile != null) {
-                    ClassParser<ClassNode> classParser = new ClassParser<ClassNode>() {
-                    };
+                    ClassParser<ClassNode> classParser = newChildParser();
                     classNode = classParser.parse(javaFile, classNode.getGenericityNodeList(), parentNodeNameMap, baseNode == null ? null : baseNode.getName());
                     if (classNode != null) {
-                        ClassNode cachedClassNode = getCachedClassNode(fullName);
+                        ClassNode cachedClassNode = session.getCachedClassNode(fullName);
                         if (cachedClassNode != null) {
                             return cachedClassNode;
                         }
@@ -931,7 +955,7 @@ public abstract class ClassParser<T extends ClassNode> {
                 return javaFile;
             }
         }
-        for (String rootPath : rootPathMap.keySet()) {
+        for (String rootPath : session.getRootPaths()) {
             File javaFile = new File(rootPath.concat(relativePath));
             if (javaFile.exists()) {
                 return javaFile;

@@ -31,9 +31,9 @@ public class LimeJapiDocsParser {
      * @param parserConfigHandler 解析配置控制类
      */
     public static void build(ParserConfigHandler parserConfigHandler) {
-        // 每次解析视为一次全新会话：清空历史 root 与模板缓存，保证基于最新源码
-        ClassParser.clearRootPaths();
-        ClassParser.clearCache();
+        // 每次解析建立独立会话：本次解析新增的所有状态（root、模板缓存、嵌套深度）均存于会话内，
+        // 方法结束会话即失去引用被回收，服务进程无驻留、多线程调用互不干扰
+        ParseSession session = new ParseSession();
         try {
             if (parserConfigHandler == null) {
                 throw CustomException.instance("ParserConfigHandler为空");
@@ -45,7 +45,7 @@ public class LimeJapiDocsParser {
             if (ListUtil.isBlank(javaFileDirs)) {
                 throw CustomException.instance("未配置Java源码路径");
             }
-            ClassParser.addRootPaths(javaFileDirs);
+            session.addRootPaths(javaFileDirs);
             Set<String> filterControllerPackages = parserConfigHandler.getParserConfig().getFilterControllerPackages();
             if (ListUtil.isNotBlank(filterControllerPackages)) {
                 javaFileDirs = packageToFileDir(javaFileDirs, filterControllerPackages);
@@ -68,7 +68,7 @@ public class LimeJapiDocsParser {
             List<ControllerData> controllerDataList = new ArrayList<>();
             int sort = 1;
             for (File file : javaFileList) {
-                ControllerNode controllerNode = ControllerParser.createParser(parserConfigHandler)
+                ControllerNode controllerNode = ControllerParser.createParser(parserConfigHandler, session)
                         .parse(file);
                 if (controllerNode == null) {
                     continue;
@@ -88,9 +88,9 @@ public class LimeJapiDocsParser {
             logger.info("解析完成！共解析了{}个Controller类", controllerDataList.size());
             parserConfigHandler.parseFinishedHandle(controllerDataList);
         } finally {
-            // 解析结束即彻底复位：清空模板缓存并释放 root 集，服务进程不留任何驻留状态；异常中断同样复位，防止污染下次解析
-            ClassParser.clearCache();
-            ClassParser.clearRootPaths();
+            // 会话释放：清空内部状态，仅剩局部引用随即可被GC回收
+            session.clearCache();
+            session.clearRootPaths();
         }
     }
 

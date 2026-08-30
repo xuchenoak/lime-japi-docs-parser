@@ -8,6 +8,9 @@ import com.github.javaparser.ast.CompilationUnit;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -15,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -26,10 +30,13 @@ public class ClassParserTest {
 
     private static final String FIXTURE_ROOT = new File("src/test/resources/fixtures/sample/src/main/java").getAbsolutePath();
 
+    private static final File USER_FILE = new File(FIXTURE_ROOT, "io/gitee/sample/dto/User.java");
+
     private ClassNode parseFixture(String relativePath) {
-        ClassParser.addRootPath(FIXTURE_ROOT);
-        return new ClassParser<ClassNode>() {
-        }.parse(new File(FIXTURE_ROOT, relativePath));
+        ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
+        };
+        parser.addRootPaths(java.util.Collections.singleton(FIXTURE_ROOT));
+        return parser.parse(new File(FIXTURE_ROOT, relativePath));
     }
 
     @Test
@@ -116,31 +123,75 @@ public class ClassParserTest {
     }
 
     @Test
-    public void parse_reusesCachedTemplateForRepeatedReferences() {
+    public void parse_instancesAreIsolated() {
+        // 每次解析使用独立实例（独立解析会话）→ 模板缓存互不共享，各自基于最新源码
         ClassNode first = parseFixture("io/gitee/sample/dto/User.java");
         ClassNode second = parseFixture("io/gitee/sample/dto/User.java");
-        ClassNode firstProfile = first.getFieldNodeByName("profile").getValueTypeClassNode();
-        ClassNode secondProfile = second.getFieldNodeByName("profile").getValueTypeClassNode();
-        assertSame(firstProfile, secondProfile);
+        assertNotSame(first.getFieldNodeByName("profile").getValueTypeClassNode(),
+                second.getFieldNodeByName("profile").getValueTypeClassNode());
     }
 
     @Test
-    public void clearCache_releasesTemplatesAndKeepsWindowSharing() {
-        ClassNode before = parseFixture("io/gitee/sample/dto/User.java");
-        ClassNode beforeProfile = before.getFieldNodeByName("profile").getValueTypeClassNode();
+    public void parse_windowSharingAndClearWithinSameInstance() {
+        // 同一解析会话可由多个解析器共享：引用解析命中会话内模板缓存，各实例单次解析互不干扰
+        ParseSession session = new ParseSession();
+        session.addRootPath(FIXTURE_ROOT);
+        ClassParser<ClassNode> parserA = new ClassParser<ClassNode>(session) {
+        };
+        ClassParser<ClassNode> parserB = new ClassParser<ClassNode>(session) {
+        };
 
-        ClassParser.clearCache();
+        ClassNode first = parserA.parse(USER_FILE);
+        ClassNode second = parserB.parse(USER_FILE);
+        assertNotSame(first, second);
+        ClassNode firstProfile = first.getFieldNodeByName("profile").getValueTypeClassNode();
+        ClassNode secondProfile = second.getFieldNodeByName("profile").getValueTypeClassNode();
+        assertSame(firstProfile, secondProfile);
 
-        ClassNode after = parseFixture("io/gitee/sample/dto/User.java");
-        ClassNode afterProfile = after.getFieldNodeByName("profile").getValueTypeClassNode();
-        assertNotSame(beforeProfile, afterProfile);
+        // 清会话缓存后，新实例引用模板重建
+        session.clearCache();
+        ClassParser<ClassNode> parserC = new ClassParser<ClassNode>(session) {
+        };
+        ClassNode third = parserC.parse(USER_FILE);
+        assertNotNull(third);
+        assertNotSame(firstProfile, third.getFieldNodeByName("profile").getValueTypeClassNode());
+    }
 
-        // 清理后同一解析窗口内共享缓存仍然有效
-        ClassParser.clearCache();
-        ClassNode u1 = parseFixture("io/gitee/sample/dto/User.java");
-        ClassNode u2 = parseFixture("io/gitee/sample/dto/User.java");
-        assertSame(u1.getFieldNodeByName("profile").getValueTypeClassNode(),
-                u2.getFieldNodeByName("profile").getValueTypeClassNode());
+    @Test
+    public void parse_instanceIsSingleUse() {
+        ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
+        };
+        parser.addRootPath(FIXTURE_ROOT);
+        parser.parse(USER_FILE);
+        assertThrows(IllegalStateException.class, () -> parser.parse(USER_FILE));
+    }
+
+    @Test
+    public void concurrent_instancesAreIsolated() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<ClassNode> user = pool.submit(() -> {
+                ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
+                };
+                parser.addRootPath(FIXTURE_ROOT);
+                return parser.parse(USER_FILE);
+            });
+            Future<ClassNode> outer = pool.submit(() -> {
+                ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
+                };
+                parser.addRootPaths(java.util.Collections.singleton(FIXTURE_ROOT));
+                return parser.parse(new File(FIXTURE_ROOT, "io/gitee/sample/dto/Outer.java"));
+            });
+            ClassNode userNode = user.get();
+            ClassNode outerNode = outer.get();
+            assertNotNull(userNode.getFieldNodeByName("profile"));
+            assertNotNull(outerNode.getFieldNodeByName("inner"));
+            // 两线程独立实例（独立会话），解析结果字段互不串扰
+            assertEquals("innerName", outerNode.getFieldNodeByName("inner").getValueTypeClassNode()
+                    .getFieldNodeByName("innerName").getName());
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

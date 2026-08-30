@@ -10,7 +10,7 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 
 解析语法能力：最高支持 Java 25 正式语法（含 record、record 模式、文本块等），解析不受运行 JDK 版本限制；javaparser 暂不支持的 preview 特性（如字符串模板 String Templates）会解析失败并在扫描时跳过该文件。
 
-缓存与内存：每次 `LimeJapiDocsParser.build` 视为一次全新解析会话，解析结束后自动清空类模板缓存与 root 路径集（`finally` 兜底，异常中断同样清理），保证每次均基于最新源码且不会在服务（如 SpringBoot）进程中残留驻留内存；一次会话内多处引用同一类会共享缓存提升效率。直接使用 `ClassParser.parse` 时模板缓存会保留到下次清理，且 `build` 结束后 root 集随之清空——如需在 `build` 之后直接使用 `ClassParser.parse`，请自行 `ClassParser.addRootPath` 登记源码路径；如需释放内存或强制最新，可调用 `ClassParser.clearCache()` / `clearRootPaths()`。
+缓存与并发：解析采用**实例会话模型**，无任何静态可变状态——每次解析都是一个独立实例（`ParseSession` 承载 root路径、类模板缓存、嵌套深度等本会话状态）。`LimeJapiDocsParser.build` 每次调用新建会话，方法结束会话即被回收，服务（如 SpringBoot）进程无驻留内存；**不同实例/不同线程解析互不干扰，天然并发安全**。同一会话内多处引用同一类会共享类模板缓存提升效率。一个 `ClassParser` 实例仅支持解析一次（运行一次的实例语义），如需再次解析请新建实例；如需在多实例间共享同一会话做精细控制，可 `new ParseSession()` 后注入 `new ClassParser(session)`。
 
 ## 2 安装
 ### 2.1 引入依赖（方式一）
@@ -172,14 +172,17 @@ public class ParserConfig {
 ```java
 public static void main(String[] args) {
 
-    // 第一步：选其一添加java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
-    ClassParser.addRootPath("");
-    ClassParser.addRootPaths(new Set<String>());
+    // 第一步：实例化抽象类ClassParser，添加java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
+    ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
+    };
+    parser.addRootPath("");
+    parser.addRootPaths(new Set<String>());
     
-    // 第二部：实例化抽象类ClassParser并调用其parse方法传入需要解析的java源码文件即可
-    ClassNode classNode = new ClassParser(){}.parse(new File("F:/**/src/main/java/com/test/TestBean.java"));
+    // 第二部：调用parse方法传入需要解析的java源码文件即可
+    ClassNode classNode = parser.parse(new File("F:/**/src/main/java/com/test/TestBean.java"));
 
     // 注意：如果不添加java源码绝对路径将无法解析该类内依赖的其它类
+    // 注意：一个解析器实例仅支持解析一次（运行一次的实例语义），如需再解析请新建实例
     
 }
 ```
