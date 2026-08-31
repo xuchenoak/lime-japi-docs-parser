@@ -45,6 +45,11 @@ public class FieldInfo {
      */
     private FieldDataNode valueFieldData = new FieldDataNode();
 
+    /**
+     * 是否隐藏类型后缀（如 Map 的 mapKey 容器仅显示注释中的泛型类型，不追加“| 类型”）
+     */
+    private boolean omitType = Boolean.FALSE;
+
     public FieldInfo(String comment, String name, String type, String validation) {
         this.comment = comment;
         this.name = name;

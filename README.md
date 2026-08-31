@@ -6,7 +6,7 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 
 支持JDK：1.8+
 
-解析能力：支持 class / interface / record 类型解析；record 组件按属性解析（组件注释支持 record 类级 javadoc 的 `@param` 及组件声明处两种写法），内部类、内部静态类、嵌套record 会解析并挂载到外层类的 `nestedClassNodeList`，被字段/方法/返回值引用时按全名解析（支持 `Outer.Inner` 写法，含同包未 import 与 JDK 内部嵌套类如 `java.util.Map.Entry` 的引用）。
+解析能力：支持 class / interface / record 类型解析；record 组件按属性解析（组件注释支持 record 类级 javadoc 的 `@param` 及组件声明处两种写法），内部类、内部静态类、嵌套record 会解析并挂载到外层类的 `nestedClassNodeList`，被字段/方法/返回值引用时按全名解析（支持 `Outer.Inner` 写法，含同包未 import 与 JDK 内部嵌套类如 `java.util.Map.Entry` 的引用）；集合泛型向内展开，`Map<K,V>` 呈现为 `mapKey` 容器（注释标注 `Map<K,V>` 泛型类型，值结构按 V 展开，如 `Map<String,DTO>`→`"mapKey": { DTO 字段... }`、`Map<String,List<DTO>>`→`"mapKey": [ DTO 数组 ]`）。
 
 解析语法能力：最高支持 Java 25 正式语法（含 record、record 模式、文本块等），解析不受运行 JDK 版本限制；javaparser 暂不支持的 preview 特性（如字符串模板 String Templates）会解析失败并在扫描时跳过该文件。
 

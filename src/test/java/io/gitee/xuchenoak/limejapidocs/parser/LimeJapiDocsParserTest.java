@@ -6,6 +6,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.config.ParserConfig;
 import io.gitee.xuchenoak.limejapidocs.parser.handler.ParserConfigHandler;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.FieldDataNode;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.FieldInfo;
+import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -365,6 +366,59 @@ public class LimeJapiDocsParserTest {
                 .filter(f -> "value".equals(f.getName())).findFirst().orElse(null);
         assertNotNull(value);
         assertEquals("Long", value.getType());
+    }
+
+    @Test
+    public void build_mapGenericValuesExpanded() {
+        ControllerData user = controllerOf(build(), USER_CONTROLLER);
+        InterfaceData edges = interfaceOf(user, "edges");
+        assertNotNull(edges);
+        FieldDataNode resData = edges.getResData();
+        assertNotNull(resData);
+        assertNotNull(resData.getFieldInfoList());
+
+        FieldInfo profileMap = fieldOf(resData.getFieldInfoList(), "profileMap");
+        assertNotNull(profileMap);
+        FieldDataNode profileValue = profileMap.getValueFieldData();
+        assertNotNull(profileValue);
+        assertNotNull(profileValue.getFieldInfoList());
+        assertEquals(1, profileValue.getFieldInfoList().size());
+        FieldInfo profileMapKey = profileValue.getFieldInfoList().get(0);
+        assertEquals("mapKey", profileMapKey.getName());
+        assertTrue(profileMapKey.isOmitType());
+        assertTrue(profileMapKey.getComment().contains("Map<String, UserProfile>"));
+        FieldDataNode profileMapValue = profileMapKey.getValueFieldData();
+        assertNotNull(profileMapValue);
+        assertNotNull(profileMapValue.getFieldInfoList());
+        assertTrue(profileMapValue.getFieldInfoList().stream().anyMatch(f -> "bio".equals(f.getName())));
+        assertTrue(profileMapValue.getFieldInfoList().stream().anyMatch(f -> "level".equals(f.getName())));
+
+        FieldInfo userListMap = fieldOf(resData.getFieldInfoList(), "userListMap");
+        assertNotNull(userListMap);
+        FieldDataNode userListValue = userListMap.getValueFieldData();
+        assertNotNull(userListValue);
+        assertNotNull(userListValue.getFieldInfoList());
+        assertEquals(1, userListValue.getFieldInfoList().size());
+        FieldInfo userListMapKey = userListValue.getFieldInfoList().get(0);
+        assertEquals("mapKey", userListMapKey.getName());
+        FieldDataNode userListValueNode = userListMapKey.getValueFieldData();
+        assertNotNull(userListValueNode);
+        assertTrue(userListValueNode.isArray());
+        FieldDataNode userListChild = userListValueNode.getChildFieldData();
+        assertNotNull(userListChild);
+        assertNotNull(userListChild.getFieldInfoList());
+        assertTrue(userListChild.getFieldInfoList().stream().anyMatch(f -> "nickname".equals(f.getName())));
+    }
+
+    @Test
+    public void build_mapFormatJsonShowsCommentTypeOnly() {
+        ControllerData user = controllerOf(build(), USER_CONTROLLER);
+        InterfaceData edges = interfaceOf(user, "edges");
+        String json = StringUtil.toFormatJsonStr(edges.getResData(), 0, 2, true, true, false, true, true);
+        assertNotNull(json);
+        assertTrue(json.contains("// Map<String, UserProfile>"), json);
+        assertFalse(json.contains("Map<String, UserProfile> | UserProfile"), json);
+        assertTrue(json.contains("\"mapKey\": {"), json);
     }
 
     @Test

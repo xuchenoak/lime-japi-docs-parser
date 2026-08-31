@@ -1,5 +1,6 @@
 package io.gitee.sample.controller;
 
+import io.gitee.sample.dto.EdgeTypes;
 import io.gitee.sample.dto.GenericParam;
 import io.gitee.sample.dto.Outer;
 import io.gitee.sample.dto.SelfRef;
@@ -144,6 +145,14 @@ public class UserController {
      */
     @GetMapping("/nested-rec")
     public Outer.NestedRec nestedRec() {
+        return null;
+    }
+
+    /**
+     * Return type with map generic values
+     */
+    @GetMapping("/edges")
+    public EdgeTypes edges() {
         return null;
     }
 

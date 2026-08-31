@@ -17,4 +17,14 @@ public class EdgeTypes {
      * double nested generic list
      */
     private List<List<User>> nestedList;
+
+    /**
+     * map value is a POJO
+     */
+    private Map<String, UserProfile> profileMap;
+
+    /**
+     * map value is a list of POJO
+     */
+    private Map<String, List<User>> userListMap;
 }

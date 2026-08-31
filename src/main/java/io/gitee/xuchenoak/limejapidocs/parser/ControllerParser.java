@@ -564,6 +564,28 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             }
             return;
         }
+        // Map（java.util.Map<K, V>）：呈现为 mapKey 容器，键名 mapKey，值结构按值泛型 V 展开
+        if (isJavaUtilMap(classNode)) {
+            List<ClassNode> genericNodeList = classNode.getGenericityNodeList();
+            if (ListUtil.isNotBlank(genericNodeList) && genericNodeList.size() >= 2) {
+                ClassNode keyType = genericNodeList.get(0);
+                ClassNode valueType = genericNodeList.get(1);
+                FieldDataNode mapValueNode = new FieldDataNode();
+                toFieldDataNode(mapValueNode, valueType, isValid);
+                FieldInfo mapKey = new FieldInfo(
+                        "Map<" + keyType.getName() + ", " + valueType.getName() + ">",
+                        "mapKey",
+                        valueType.getName(),
+                        null
+                );
+                mapKey.setValueFieldData(mapValueNode);
+                mapKey.setOmitType(true);
+                List<FieldInfo> mapInfos = new ArrayList<>(1);
+                mapInfos.add(mapKey);
+                fieldDataNode.setFieldInfoList(mapInfos);
+                return;
+            }
+        }
         // 基础类型
         if (isDiyLastValueType(classNode.getFullName()) || ParseUtil.getCommonType(classNode.getFullName()) != null) {
             fieldDataNode.setLastValue(true);
@@ -602,5 +624,15 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             // 其他类型（数组、自定义对象）继续递归
             toFieldDataNode(fieldInfo.getValueFieldData(), typeClassNode, fieldNode.isValid());
         }
+    }
+
+    /**
+     * 是否为 java.util.Map 类型（用于展开其值泛型结构）
+     *
+     * @param classNode 类型节点
+     * @return 是 java.util.Map 时返回 true
+     */
+    private boolean isJavaUtilMap(ClassNode classNode) {
+        return classNode != null && java.util.Map.class.getName().equals(classNode.getFullName());
     }
 }
