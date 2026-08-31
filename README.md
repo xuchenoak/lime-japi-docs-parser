@@ -12,6 +12,8 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 
 缓存与并发：解析采用**实例会话模型**，无任何静态可变状态——每次解析都是一个独立实例（`ParseSession` 承载 root路径、类模板缓存、嵌套深度等本会话状态）。`LimeJapiDocsParser.build` 每次调用新建会话，方法结束会话即被回收，服务（如 SpringBoot）进程无驻留内存；**不同实例/不同线程解析互不干扰，天然并发安全**。同一会话内多处引用同一类会共享类模板缓存提升效率。一个 `ClassParser` 实例仅支持解析一次（运行一次的实例语义），如需再次解析请新建实例；如需在多实例间共享同一会话做精细控制，可 `new ParseSession()` 后注入 `new ClassParser(session)`。
 
+已知限制：表单项中的复杂 `Map` 字段不展开（表单无法承载复杂 Map 结构）；`java.util` 之外的 Map 子类不会按 `mapKey` 容器展开，如需将特定类型视为终点类型可 `ParserConfig.addLastValueTypeFullName` 配置。
+
 ## 2 安装
 ### 2.1 引入依赖（方式一）
 ```xml

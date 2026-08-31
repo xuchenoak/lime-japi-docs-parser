@@ -88,9 +88,10 @@ public class LimeJapiDocsParser {
             logger.info("解析完成！共解析了{}个Controller类", controllerDataList.size());
             parserConfigHandler.parseFinishedHandle(controllerDataList);
         } finally {
-            // 会话释放：清空内部状态，仅剩局部引用随即可被GC回收
+            // 会话释放：清空内部状态并释放线程局部解析器，仅剩局部引用随即可被GC回收
             session.clearCache();
             session.clearRootPaths();
+            ClassParser.removeJavaParser();
         }
     }
 

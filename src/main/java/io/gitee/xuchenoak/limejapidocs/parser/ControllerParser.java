@@ -37,6 +37,13 @@ public class ControllerParser extends ClassParser<ControllerNode> {
     private ParserConfigHandler parserConfigHandler;
 
     /**
+     * java.util 包下的 Map 族类型名（此类类型按 mapKey 容器呈现）
+     */
+    private static final Set<String> JAVA_UTIL_MAP_NAMES = new HashSet<>(Arrays.asList(
+            "Map", "HashMap", "LinkedHashMap", "TreeMap", "ConcurrentHashMap",
+            "Hashtable", "SortedMap", "NavigableMap", "AbstractMap"));
+
+    /**
      * 是否为自定义最终类型
      *
      * @param fullName 类全名
@@ -627,12 +634,18 @@ public class ControllerParser extends ClassParser<ControllerNode> {
     }
 
     /**
-     * 是否为 java.util.Map 类型（用于展开其值泛型结构）
+     * 是否为 java.util 包下的 Map 族类型（用于按 mapKey 容器展开值泛型结构）
      *
      * @param classNode 类型节点
-     * @return 是 java.util.Map 时返回 true
+     * @return 属于 java.util.Map 及其常见实现时返回 true
      */
     private boolean isJavaUtilMap(ClassNode classNode) {
-        return classNode != null && java.util.Map.class.getName().equals(classNode.getFullName());
+        if (classNode == null || StringUtil.isBlank(classNode.getFullName())) {
+            return false;
+        }
+        if (!classNode.getFullName().startsWith("java.util.")) {
+            return false;
+        }
+        return JAVA_UTIL_MAP_NAMES.contains(classNode.getName());
     }
 }

@@ -408,6 +408,20 @@ public class LimeJapiDocsParserTest {
         assertNotNull(userListChild);
         assertNotNull(userListChild.getFieldInfoList());
         assertTrue(userListChild.getFieldInfoList().stream().anyMatch(f -> "nickname".equals(f.getName())));
+
+        // Map 子类（LinkedHashMap）同构展开
+        FieldInfo linkedProfileMap = fieldOf(resData.getFieldInfoList(), "linkedProfileMap");
+        assertNotNull(linkedProfileMap);
+        FieldDataNode linkedValue = linkedProfileMap.getValueFieldData();
+        assertNotNull(linkedValue);
+        assertNotNull(linkedValue.getFieldInfoList());
+        assertEquals(1, linkedValue.getFieldInfoList().size());
+        FieldInfo linkedMapKey = linkedValue.getFieldInfoList().get(0);
+        assertEquals("mapKey", linkedMapKey.getName());
+        assertTrue(linkedMapKey.getComment().contains("Map<String, UserProfile>"));
+        assertNotNull(linkedMapKey.getValueFieldData().getFieldInfoList());
+        assertTrue(linkedMapKey.getValueFieldData().getFieldInfoList().stream()
+                .anyMatch(f -> "bio".equals(f.getName())));
     }
 
     @Test

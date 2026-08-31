@@ -156,6 +156,14 @@ public abstract class ClassParser<T extends ClassNode> {
     }
 
     /**
+     * 释放当前线程的局部解析器实例（由 {@link LimeJapiDocsParser#build} 结束后自动调用；
+     * 直接使用 {@link ClassParser#parse} 的场景如需立即释放线程局部解析器可自行调用）
+     */
+    public static void removeJavaParser() {
+        JAVA_PARSER.remove();
+    }
+
+    /**
      * 获取当前会话root路径集（不可修改视图）
      *
      * @return 本会话已登记的root路径集

@@ -286,4 +286,14 @@ public class ClassParserTest {
         assertEquals("N2", n2.getName());
         assertNotNull(n2.getFieldNodeByName("next"));
     }
+
+    @Test
+    public void removeJavaParser_isSafeAndReusable() {
+        // 无值/已有值时调用均不应抛异常，且后续解析不受影响
+        ClassParser.removeJavaParser();
+        ClassNode node = parseFixture("io/gitee/sample/dto/UserProfile.java");
+        assertNotNull(node);
+        assertNotNull(node.getFieldNodeByName("bio"));
+        ClassParser.removeJavaParser();
+    }
 }

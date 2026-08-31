@@ -1,5 +1,6 @@
 package io.gitee.sample.dto;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,4 +28,9 @@ public class EdgeTypes {
      * map value is a list of POJO
      */
     private Map<String, List<User>> userListMap;
+
+    /**
+     * Map subclass (LinkedHashMap) should render the same mapKey container
+     */
+    private LinkedHashMap<String, UserProfile> linkedProfileMap;
 }
