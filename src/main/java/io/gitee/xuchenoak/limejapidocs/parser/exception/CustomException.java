@@ -15,6 +15,16 @@ import java.io.PrintStream;
  */
 public class CustomException extends RuntimeException {
 
+    /**
+     * 系统内部错误码（无参/默认构造使用）
+     */
+    public static final int CODE_SYSTEM = 500;
+
+    /**
+     * 业务/参数错误码（带消息构造使用）
+     */
+    public static final int CODE_BIZ = 505;
+
     private static final Logger logger = LoggerFactory.getLogger(CustomException.class);
 
     private static final long serialVersionUID = 1L;
@@ -48,13 +58,13 @@ public class CustomException extends RuntimeException {
 
     private CustomException() {
         super("服务器内部错误");
-        this.code = 500;
+        this.code = CODE_SYSTEM;
         this.msg = "服务器内部错误";
     }
 
     private CustomException(String msg) {
         super(msg);
-        this.code = 505;
+        this.code = CODE_BIZ;
         this.msg = msg;
     }
 

@@ -3,6 +3,7 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
+import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
 import io.gitee.xuchenoak.limejapidocs.parser.handler.ParserConfigHandler;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.ControllerNode;
 import io.gitee.xuchenoak.limejapidocs.parser.util.ListUtil;
@@ -30,58 +31,68 @@ public class LimeJapiDocsParser {
      * @param parserConfigHandler 解析配置控制类
      */
     public static void build(ParserConfigHandler parserConfigHandler) {
-        if (parserConfigHandler == null) {
-            throw new RuntimeException("ParserConfigHandler为空");
-        }
-        if (parserConfigHandler.getParserConfig() == null) {
-            throw new RuntimeException("ParserConfig为空");
-        }
-        Set<String> javaFileDirs = parserConfigHandler.getParserConfig().getJavaFilePaths();
-        if (ListUtil.isBlank(javaFileDirs)) {
-            throw new RuntimeException("未配置Java源码路径");
-        }
-        ClassParser.addRootPaths(javaFileDirs);
-        Set<String> filterControllerPackages = parserConfigHandler.getParserConfig().getFilterControllerPackages();
-        if (ListUtil.isNotBlank(filterControllerPackages)) {
-            javaFileDirs = packageToFileDir(javaFileDirs, filterControllerPackages);
+        // 每次解析建立独立会话：本次解析新增的所有状态（root、模板缓存、嵌套深度）均存于会话内，
+        // 方法结束会话即失去引用被回收，服务进程无驻留、多线程调用互不干扰
+        ParseSession session = new ParseSession();
+        try {
+            if (parserConfigHandler == null) {
+                throw CustomException.instance("ParserConfigHandler为空");
+            }
+            if (parserConfigHandler.getParserConfig() == null) {
+                throw CustomException.instance("ParserConfig为空");
+            }
+            Set<String> javaFileDirs = parserConfigHandler.getParserConfig().getJavaFilePaths();
             if (ListUtil.isBlank(javaFileDirs)) {
-                throw new RuntimeException("指定解析的controller包路径不存在");
+                throw CustomException.instance("未配置Java源码路径");
             }
-        }
-        List<File> javaFileList = new ArrayList<>();
-        for (String javaFileDir : javaFileDirs) {
-            List<File> files = getJavaFileListByDir(javaFileDir);
-            if (ListUtil.isBlank(files)) {
-                logger.info("该目录下无.java文件：{}", javaFileDir);
-                continue;
+            session.addRootPaths(javaFileDirs);
+            Set<String> filterControllerPackages = parserConfigHandler.getParserConfig().getFilterControllerPackages();
+            if (ListUtil.isNotBlank(filterControllerPackages)) {
+                javaFileDirs = packageToFileDir(javaFileDirs, filterControllerPackages);
+                if (ListUtil.isBlank(javaFileDirs)) {
+                    throw CustomException.instance("指定解析的controller包路径不存在");
+                }
             }
-            javaFileList.addAll(files);
-        }
-        if (ListUtil.isBlank(javaFileList)) {
-            throw new RuntimeException("未找到可解析.java文件");
-        }
-        List<ControllerData> controllerDataList = new ArrayList<>();
-        int sort = 1;
-        for (File file : javaFileList) {
-            ControllerNode controllerNode = ControllerParser.createParser(parserConfigHandler)
-                    .parse(file);
-            if (controllerNode == null) {
-                continue;
+            List<File> javaFileList = new ArrayList<>();
+            for (String javaFileDir : javaFileDirs) {
+                List<File> files = getJavaFileListByDir(javaFileDir);
+                if (ListUtil.isBlank(files)) {
+                    logger.info("该目录下无.java文件：{}", javaFileDir);
+                    continue;
+                }
+                javaFileList.addAll(files);
             }
-            ControllerData controllerData = controllerNode.getControllerData();
-            if (controllerData == null) {
-                continue;
+            if (ListUtil.isBlank(javaFileList)) {
+                throw CustomException.instance("未找到可解析.java文件");
             }
-            controllerData.setSort(sort);
-            controllerData.setCreateTime(parserConfigHandler.getParseTime());
-            controllerDataList.add(controllerData);
-            parserConfigHandler.controllerDataHandle(controllerData);
-            parserConfigHandler.controllerNodeHandle(controllerNode);
-            logger.info("\n成功解析-{}：{}", sort, controllerNode.getFullName());
-            sort++;
+            List<ControllerData> controllerDataList = new ArrayList<>();
+            int sort = 1;
+            for (File file : javaFileList) {
+                ControllerNode controllerNode = ControllerParser.createParser(parserConfigHandler, session)
+                        .parse(file);
+                if (controllerNode == null) {
+                    continue;
+                }
+                ControllerData controllerData = controllerNode.getControllerData();
+                if (controllerData == null) {
+                    continue;
+                }
+                controllerData.setSort(sort);
+                controllerData.setCreateTime(parserConfigHandler.getParseTime());
+                controllerDataList.add(controllerData);
+                parserConfigHandler.controllerDataHandle(controllerData);
+                parserConfigHandler.controllerNodeHandle(controllerNode);
+                logger.info("\n成功解析-{}：{}", sort, controllerNode.getFullName());
+                sort++;
+            }
+            logger.info("解析完成！共解析了{}个Controller类", controllerDataList.size());
+            parserConfigHandler.parseFinishedHandle(controllerDataList);
+        } finally {
+            // 会话释放：清空内部状态并释放线程局部解析器，仅剩局部引用随即可被GC回收
+            session.clearCache();
+            session.clearRootPaths();
+            ClassParser.removeJavaParser();
         }
-        logger.info("解析完成！共解析了{}个Controller类", controllerDataList.size());
-        parserConfigHandler.parseFinishedHandle(controllerDataList);
     }
 
     /**

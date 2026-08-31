@@ -1,6 +1,7 @@
 package io.gitee.xuchenoak.limejapidocs.parser.basenode;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 /**
@@ -9,6 +10,7 @@ import lombok.NoArgsConstructor;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 public class FieldNode<T> extends BaseNode {
 
@@ -54,7 +56,7 @@ public class FieldNode<T> extends BaseNode {
         if (valueTypeClassNode == null) {
             valueTypeClassNode = new ClassNode();
         }
-        valueTypeClassNode.setArray(isPrimitiveType);
+        valueTypeClassNode.setPrimitiveType(isPrimitiveType);
     }
 
     public boolean isPrimitiveType() {

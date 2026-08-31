@@ -19,6 +19,9 @@
 *.tar.gz
 *.rar
 
+# Maven build output
+target/
+
 ### IntelliJ IDEA ###
 .idea
 *.iws

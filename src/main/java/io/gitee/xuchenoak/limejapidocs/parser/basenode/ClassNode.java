@@ -4,12 +4,15 @@ import io.gitee.xuchenoak.limejapidocs.parser.util.ListUtil;
 import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 类节点
@@ -17,6 +20,7 @@ import java.util.stream.Collectors;
  * @author xuchenoak
  **/
 @Data
+@EqualsAndHashCode(callSuper = true)
 @AllArgsConstructor
 @NoArgsConstructor
 public class ClassNode extends BaseNode {
@@ -72,39 +76,67 @@ public class ClassNode extends BaseNode {
     private List<ClassNode> implementsNodeList;
 
     /**
-     * 获取本类及父级属性节点（无序）
+     * 嵌套类型集（内部类/内部静态类/嵌套record）
+     */
+    private List<ClassNode> nestedClassNodeList;
+
+    /**
+     * 获取本类及父级属性节点（本类属性优先，父级同名属性被本类覆盖）
      *
      * @return 属性及其继承节点属性集
      */
     public List<FieldNode> getFieldNodeListAndExtends() {
-        List<FieldNode> fieldNodes = new ArrayList<>();
-        if (extendsNode != null) {
-            List<FieldNode> extendsFieldNodes = extendsNode.getFieldNodeListAndExtends();
-            if (ListUtil.isNotBlank(extendsFieldNodes)) {
-                fieldNodes.addAll(extendsFieldNodes);
-            }
-        }
-        if (ListUtil.isNotBlank(fieldNodeList)) {
-            fieldNodes.addAll(fieldNodeList);
-        }
-        return fieldNodes.stream().collect(Collectors.toMap(FieldNode::getName, Function.identity(), (k1, k2) -> k1)).values().stream().collect(Collectors.toList());
+        Map<String, FieldNode> byName = new LinkedHashMap<>();
+        collectOwnAndExtends(this, byName);
+        return new ArrayList<>(byName.values());
     }
 
     /**
-     * 注入本类及父级属性节点（有序）
+     * 递归收集本类及父级属性（本类优先，同名父级属性被本类覆盖，保持声明顺序）
+     */
+    private static void collectOwnAndExtends(ClassNode node, Map<String, FieldNode> byName) {
+        if (ListUtil.isNotBlank(node.fieldNodeList)) {
+            for (FieldNode fieldNode : node.fieldNodeList) {
+                String name = fieldNode.getName();
+                if (name != null) {
+                    byName.putIfAbsent(name, fieldNode);
+                }
+            }
+        }
+        if (node.extendsNode != null) {
+            collectOwnAndExtends(node.extendsNode, byName);
+        }
+    }
+
+    /**
+     * 注入本类及父级属性节点（有序，本类优先，父级同名属性不重复注入）
      *
      * @param fieldNodes 注入本类及父级属性节点集
      */
     public void injectFieldNodeListAndExtends(List<FieldNode> fieldNodes) {
+        Set<String> seen = new HashSet<>();
+        for (FieldNode fieldNode : fieldNodes) {
+            if (fieldNode.getName() != null) {
+                seen.add(fieldNode.getName());
+            }
+        }
+        injectInto(fieldNodes, seen);
+    }
+
+    /**
+     * 递归注入本类及父级属性
+     */
+    private void injectInto(List<FieldNode> fieldNodes, Set<String> seen) {
         if (ListUtil.isNotBlank(fieldNodeList)) {
             for (FieldNode fieldNode : fieldNodeList) {
-                if (fieldNodes.stream().filter(f -> f.getName().equals(fieldNode.getName())).count() < 1) {
+                String name = fieldNode.getName();
+                if (name != null && seen.add(name)) {
                     fieldNodes.add(fieldNode);
                 }
             }
         }
         if (extendsNode != null) {
-            extendsNode.injectFieldNodeListAndExtends(fieldNodes);
+            extendsNode.injectInto(fieldNodes, seen);
         }
     }
 
@@ -250,6 +282,13 @@ public class ClassNode extends BaseNode {
             implementsNodeList = new ArrayList<>();
         }
         implementsNodeList.add(classNode);
+    }
+
+    public void addNestedClassNode(ClassNode classNode) {
+        if (nestedClassNodeList == null) {
+            nestedClassNodeList = new ArrayList<>();
+        }
+        nestedClassNodeList.add(classNode);
     }
 
 

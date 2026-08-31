@@ -37,6 +37,13 @@ public class ControllerParser extends ClassParser<ControllerNode> {
     private ParserConfigHandler parserConfigHandler;
 
     /**
+     * java.util 包下的 Map 族类型名（此类类型按 mapKey 容器呈现）
+     */
+    private static final Set<String> JAVA_UTIL_MAP_NAMES = new HashSet<>(Arrays.asList(
+            "Map", "HashMap", "LinkedHashMap", "TreeMap", "ConcurrentHashMap",
+            "Hashtable", "SortedMap", "NavigableMap", "AbstractMap"));
+
+    /**
      * 是否为自定义最终类型
      *
      * @param fullName 类全名
@@ -58,20 +65,43 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         return parserConfigHandler.getParserConfig().getLastValueTypeFullName().contains(fullName);
     }
 
+    /**
+     * 构造解析器实例（自带全新解析会话）
+     */
     private ControllerParser() {
         super(new ControllerNode());
+    }
+
+    /**
+     * 构造解析器实例（复用指定解析会话，供一键解析内多个controller共享类模板缓存与root路径）
+     *
+     * @param session 解析会话
+     */
+    private ControllerParser(ParseSession session) {
+        super(session, new ControllerNode());
     }
 
     public static ControllerParser createParser(ParserConfigHandler parserConfigHandler) {
         return new ControllerParser().handler(parserConfigHandler);
     }
 
+    /**
+     * 使用指定解析会话创建解析器（同一会话内的多个解析器共享类模板缓存与root路径）
+     *
+     * @param parserConfigHandler 解析配置回调
+     * @param session             解析会话；为 null 时自动创建新会话
+     * @return 控制器解析器实例
+     */
+    public static ControllerParser createParser(ParserConfigHandler parserConfigHandler, ParseSession session) {
+        return new ControllerParser(session).handler(parserConfigHandler);
+    }
+
     private ControllerParser handler(ParserConfigHandler parserConfigHandler) {
         if (parserConfigHandler == null) {
-            throw new RuntimeException("ParserConfigHandler为空");
+            throw CustomException.instance("ParserConfigHandler为空");
         }
         if (parserConfigHandler.getParseTime() == null) {
-            throw new RuntimeException("ParseTime为空");
+            throw CustomException.instance("ParseTime为空");
         }
         this.parserConfigHandler = parserConfigHandler;
         return this;
@@ -124,15 +154,23 @@ public class ControllerParser extends ClassParser<ControllerNode> {
 
         long createTimestamp = parserConfigHandler.getParseTime().getTime();
         String javaFileCode = SecureUtil.md5(getJavaFile());
-        String controllerId = SecureUtil.md5(StrUtil.format("{}_{}", javaFileCode, createTimestamp));
+        boolean deterministicId = parserConfigHandler.getParserConfig() != null
+                && Optional.ofNullable(parserConfigHandler.getParserConfig().isDeterministicId()).orElse(false);
+        String controllerIdSeed = deterministicId
+                ? javaFileCode
+                : StrUtil.format("{}_{}", javaFileCode, createTimestamp);
+        String controllerId = SecureUtil.md5(controllerIdSeed);
         List<InterfaceData> interfaceDataList = new ArrayList<>();
         int flag = 1;
         for (InterfaceMethodNode interfaceMethodNode : interfaceMethodNodeList) {
             if (ListUtil.isBlank(interfaceMethodNode.getUriList())) {
                 continue;
             }
+            String interfaceIdSeed = deterministicId
+                    ? StrUtil.format("{}_{}_{}", controllerId, interfaceMethodNode.getName(), flag)
+                    : StrUtil.format("{}_{}_{}", controllerId, IdUtil.fastSimpleUUID(), flag);
             interfaceDataList.add(new InterfaceData(
-                    SecureUtil.md5(StrUtil.format("{}_{}_{}", controllerId, IdUtil.fastSimpleUUID(), flag)),
+                    SecureUtil.md5(interfaceIdSeed),
                     controllerId,
                     interfaceMethodNode.getName(),
                     interfaceMethodNode.getComment(),
@@ -203,10 +241,12 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                 // 若为重写父类的方法则使用父类的注解和子类的方法进行解析（重写的子类没加注解则以父类注解为主）
                 if (overrideMethodMap.containsKey(overrideKey)) {
                     MethodNode childMethodNode = overrideMethodMap.get(overrideKey);
-                    // 把父级的注解给子集方法
-                    childMethodNode.setAnnotationNodeList(parentMethodNode.getAnnotationNodeList());
-                    childMethodNode.setComment(parentMethodNode.getComment());
-                    InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(childMethodNode, controllerNode);
+                    // 拷贝子类方法节点，避免原地修改 controllerNode 中已被其它地方引用的 MethodNode
+                    MethodNode overrideMethodNode = new MethodNode(childMethodNode);
+                    // 把父级的注解给拷贝后的方法
+                    overrideMethodNode.setAnnotationNodeList(parentMethodNode.getAnnotationNodeList());
+                    overrideMethodNode.setComment(parentMethodNode.getComment());
+                    InterfaceMethodNode interfaceMethodNode = buildInterfaceMethodNode(overrideMethodNode, controllerNode);
                     if (interfaceMethodNode != null) {
                         parentInterfaceMethodNodeList.add(interfaceMethodNode);
                     }
@@ -448,7 +488,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         if (uri == null) {
             return false;
         }
-        uri = delPrefixAndSuffixRod(uri);
+        uri = delPrefixAndSuffixSlash(uri);
         StringBuilder realBuilder = null;
         if (ListUtil.isBlank(baseUriList)) {
             realBuilder = new StringBuilder("/");
@@ -458,7 +498,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         for (String baseUri : baseUriList) {
             realBuilder = new StringBuilder("/");
             if (StringUtil.isNotBlank(baseUri)) {
-                baseUri = delPrefixAndSuffixRod(baseUri);
+                baseUri = delPrefixAndSuffixSlash(baseUri);
             }
             if (StringUtil.isNotBlank(baseUri)) {
                 realBuilder.append(baseUri);
@@ -476,7 +516,7 @@ public class ControllerParser extends ClassParser<ControllerNode> {
      *
      * @return
      */
-    private String delPrefixAndSuffixRod(String uri) {
+    private String delPrefixAndSuffixSlash(String uri) {
         if (uri == null) {
             return null;
         }
@@ -531,6 +571,28 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             }
             return;
         }
+        // Map（java.util.Map<K, V>）：呈现为 mapKey 容器，键名 mapKey，值结构按值泛型 V 展开
+        if (isJavaUtilMap(classNode)) {
+            List<ClassNode> genericNodeList = classNode.getGenericityNodeList();
+            if (ListUtil.isNotBlank(genericNodeList) && genericNodeList.size() >= 2) {
+                ClassNode keyType = genericNodeList.get(0);
+                ClassNode valueType = genericNodeList.get(1);
+                FieldDataNode mapValueNode = new FieldDataNode();
+                toFieldDataNode(mapValueNode, valueType, isValid);
+                FieldInfo mapKey = new FieldInfo(
+                        "Map<" + keyType.getName() + ", " + valueType.getName() + ">",
+                        "mapKey",
+                        valueType.getName(),
+                        null
+                );
+                mapKey.setValueFieldData(mapValueNode);
+                mapKey.setOmitType(true);
+                List<FieldInfo> mapInfos = new ArrayList<>(1);
+                mapInfos.add(mapKey);
+                fieldDataNode.setFieldInfoList(mapInfos);
+                return;
+            }
+        }
         // 基础类型
         if (isDiyLastValueType(classNode.getFullName()) || ParseUtil.getCommonType(classNode.getFullName()) != null) {
             fieldDataNode.setLastValue(true);
@@ -569,5 +631,21 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             // 其他类型（数组、自定义对象）继续递归
             toFieldDataNode(fieldInfo.getValueFieldData(), typeClassNode, fieldNode.isValid());
         }
+    }
+
+    /**
+     * 是否为 java.util 包下的 Map 族类型（用于按 mapKey 容器展开值泛型结构）
+     *
+     * @param classNode 类型节点
+     * @return 属于 java.util.Map 及其常见实现时返回 true
+     */
+    private boolean isJavaUtilMap(ClassNode classNode) {
+        if (classNode == null || StringUtil.isBlank(classNode.getFullName())) {
+            return false;
+        }
+        if (!classNode.getFullName().startsWith("java.util.")) {
+            return false;
+        }
+        return JAVA_UTIL_MAP_NAMES.contains(classNode.getName());
     }
 }

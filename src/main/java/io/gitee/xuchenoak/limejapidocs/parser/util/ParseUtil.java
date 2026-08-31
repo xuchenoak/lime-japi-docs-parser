@@ -30,6 +30,9 @@ public class ParseUtil {
     public static final String JAVA_PACKAGE_PREFIX = "java.";
     public static final String JAVA_PACKAGE_LANG = "java.lang.";
 
+    /**
+     * 基础类型及其包装类对照表（静态只读，初始化后不再被修改，可并发访问）
+     */
     private static Map<String, Class> commonTypeMap = new HashMap<>();
 
     public static Class getCommonType(String key) {

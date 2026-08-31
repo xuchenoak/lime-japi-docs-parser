@@ -6,6 +6,16 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 
 支持JDK：1.8+
 
+> 注意：2.0 起解析模型变更为**实例会话化**，属破坏性升级；2.x 使用方请阅读「5 更新记录」V2.0.1 的变更说明。
+
+解析能力：支持 class / interface / record 类型解析；record 组件按属性解析（组件注释支持 record 类级 javadoc 的 `@param` 及组件声明处两种写法），内部类、内部静态类、嵌套record 会解析并挂载到外层类的 `nestedClassNodeList`，被字段/方法/返回值引用时按全名解析（支持 `Outer.Inner` 写法，含同包未 import 与 JDK 内部嵌套类如 `java.util.Map.Entry` 的引用）；集合泛型向内展开，`Map<K,V>` 呈现为 `mapKey` 容器（注释标注 `Map<K,V>` 泛型类型，值结构按 V 展开，如 `Map<String,DTO>`→`"mapKey": { DTO 字段... }`、`Map<String,List<DTO>>`→`"mapKey": [ DTO 数组 ]`）。
+
+解析语法能力：最高支持 Java 25 正式语法（含 record、record 模式、文本块等），解析不受运行 JDK 版本限制；javaparser 暂不支持的 preview 特性（如字符串模板 String Templates）会解析失败并在扫描时跳过该文件。
+
+缓存与并发：解析采用**实例会话模型**，无任何静态可变状态——每次解析都是一个独立实例（`ParseSession` 承载 root路径、类模板缓存、嵌套深度等本会话状态）。`LimeJapiDocsParser.build` 每次调用新建会话，方法结束会话即被回收，服务（如 SpringBoot）进程无驻留内存；**不同实例/不同线程解析互不干扰，天然并发安全**。同一会话内多处引用同一类会共享类模板缓存提升效率。一个 `ClassParser` 实例仅支持解析一次（运行一次的实例语义），如需再次解析请新建实例；如需在多实例间共享同一会话做精细控制，可 `new ParseSession()` 后注入 `new ClassParser(session)`。
+
+已知限制：表单项中的复杂 `Map` 字段不展开（表单无法承载复杂 Map 结构）；`java.util` 之外的 Map 子类不会按 `mapKey` 容器展开，如需将特定类型视为终点类型可 `ParserConfig.addLastValueTypeFullName` 配置。
+
 ## 2 安装
 ### 2.1 引入依赖（方式一）
 ```xml
@@ -13,7 +23,7 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 <dependency>
     <groupId>io.gitee.xuchenoak</groupId>
     <artifactId>lime-japi-docs-parser</artifactId>
-    <version>1.0.5</version>
+    <version>2.0.1</version>
 </dependency>
 ```
 ### 2.2 下载jar包（方式二）
@@ -55,7 +65,7 @@ public class Test {
 ```java
 public static void main(String[] args) {
     
-    // 直接调用build方法即可（ParserConfigHandler详见3.2）
+    // 直接调用build方法即可（ParserConfigHandler详见3.3）
     LimeJapiDocsParser.build(new ParserConfigHandler() {
 
         /**
@@ -85,7 +95,7 @@ public static void main(String[] args) {
 // 解析配置控制接口
 public interface ParserConfigHandler {
 
-    // 提供解析相关配置（ParserConfig详见3.3）
+    // 提供解析相关配置（ParserConfig详见3.4）
     ParserConfig getParserConfig();
 
     // 提供解析时间
@@ -154,6 +164,11 @@ public class ParserConfig {
     // 需要排除的controller类名集（非类全名，按照文件名称字符串匹配）
     private Set<String> ignoreControllerNames;
 
+    // 是否使用确定性ID（默认false），通过 setDeterministicId(boolean) 链式开启
+    // 关闭时controllerId掺入解析时间、interfaceId掺入随机UUID，每次解析结果不同；
+    // 开启后ID仅由源码内容与序号派生，多次解析结果完全一致，便于持久化权限等配置
+    private boolean deterministicId;
+
 }
 ```
 ## 4 答疑
@@ -161,14 +176,21 @@ public class ParserConfig {
 ```java
 public static void main(String[] args) {
 
-    // 第一步：选其一添加java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
-    ClassParser.addRootPath("");
-    ClassParser.addRootPaths(new Set<String>());
+    // 第一步：实例化抽象类ClassParser，添加java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
+    ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
+    };
+    parser.addRootPath("F:/**/src/main/java");
+
+    // 也可批量添加：
+    // Set<String> rootPaths = new HashSet<>();
+    // rootPaths.add("F:/**/src/main/java");
+    // parser.addRootPaths(rootPaths);
     
-    // 第二部：实例化抽象类ClassParser并调用其parse方法传入需要解析的java源码文件即可
-    ClassNode classNode = new ClassParser(){}.parse(new File("F:/**/src/main/java/com/test/TestBean.java"));
+    // 第二步：调用parse方法传入需要解析的java源码文件即可
+    ClassNode classNode = parser.parse(new File("F:/**/src/main/java/com/test/TestBean.java"));
 
     // 注意：如果不添加java源码绝对路径将无法解析该类内依赖的其它类
+    // 注意：一个解析器实例仅支持解析一次（运行一次的实例语义），如需再解析请新建实例
     
 }
 ```
@@ -220,6 +242,19 @@ public class StringUtil {
 
 - 2025-11-07 V1.0.5 更新：
     - BUG修复：修复了接口方法解析的一个空指针问题。
+
+- 2026-08-31 V2.0.1 更新（重要升级，含破坏性变更，升级前请阅读本记录）：
+    - 【破坏性变更】解析改为实例会话模型：`ClassParser.addRootPath(s)`、`clearCache()`、`clearRootPaths()` 由静态方法改为实例方法；新增公开类 `ParseSession`（可通过 `new ParseSession()` + `new ClassParser(session)` 共享会话）；一个解析器实例仅支持解析一次，再次 `parse` 将抛 `IllegalStateException`（§4.1 已更新为新用法）。
+    - 核心解析器 javaparser-core 升级至 3.28.2：支持解析 Java 21+ 正式语法（record、record 模式、文本块等，语言级别 JAVA_25）；preview 特性（如字符串模板 String Templates）暂不支持。
+    - 新增类型解析能力：
+        1. record 组件按属性解析，组件注释支持类级 `@param` 与组件声明处两种写法；
+        2. 内部类 / 内部静态类 / 嵌套record 解析并挂载到外层类 `nestedClassNodeList`；
+        3. 支持 `Outer.Inner` 引用（含同包未 import、多层嵌套，JDK 内部嵌套类按 binary 名兜底）；
+        4. `Map<K,V>`（含常见实现）呈现为 `mapKey` 容器，值泛型结构向内展开。
+    - 新增 `ParserConfig.setDeterministicId` 确定性 ID 开关（默认关闭）：开启后 `controllerId/interfaceId` 仅由源码内容与序号派生，多次解析结果一致，便于持久化权限等配置。
+    - 健壮性与性能：`MAX_PARSE_DEPTH=64` 深度护卫防栈溢出；线程局部解析器随 `build` 结束释放（`ClassParser.removeJavaParser()`）；字段继承去重改为线性、缓存 key 惰性化；默认值注入补充 Boolean/Character。
+    - 异常体系统一：`CustomException` 提供 `CODE_SYSTEM`/`CODE_BIZ` 常量。
+    - 引入测试基建：JUnit 5 + 内置样例 fixture 项目，`mvn test` 可全量回归。
 
 ## 6 最后&致谢
 
