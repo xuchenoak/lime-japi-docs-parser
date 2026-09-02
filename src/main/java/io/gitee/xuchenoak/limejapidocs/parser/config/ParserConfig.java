@@ -14,7 +14,7 @@ import java.util.Set;
 public class ParserConfig {
 
     /**
-     * java文件所在目录绝对路径（必须写到java目录）
+     * java源码所在目录绝对路径（任意深度，可为模块根/项目根，无需写到java目录，可配置多个）
      */
     private Set<String> javaFilePaths;
 
@@ -24,17 +24,17 @@ public class ParserConfig {
     private Set<String> lastValueTypeFullName;
 
     /**
-     * 仅扫描解析该包集合下的controller类（必须位于javaFilePaths下，若不配置默认扫描javaFilePaths下所有）
+     * 仅扫描解析该包集合下的controller类（不配置默认扫描所有已配置目录下的全部文件）
      */
     private Set<String> filterControllerPackages;
 
     /**
-     * 仅扫描的controller类名集（非类全名）
+     * 仅扫描的controller类全名集（如 io.gitee.sample.controller.UserController）
      */
     private Set<String> filterControllerNames;
 
     /**
-     * 需要排除的controller类名集（非类全名）
+     * 需要排除的controller类全名集（如 io.gitee.sample.controller.UserController）
      */
     private Set<String> ignoreControllerNames;
 
@@ -71,6 +71,11 @@ public class ParserConfig {
         return inject(filterControllerPackages, packages);
     }
 
+    /**
+     * 仅扫描的controller类全名集
+     *
+     * @param names controller类全名
+     */
     public ParserConfig addFilterControllerName(String... names) {
         if (filterControllerNames == null) {
             filterControllerNames = new HashSet<>();
@@ -78,6 +83,11 @@ public class ParserConfig {
         return inject(filterControllerNames, names);
     }
 
+    /**
+     * 需要排除的controller类全名集
+     *
+     * @param names controller类全名
+     */
     public ParserConfig addIgnoreControllerName(String... names) {
         if (ignoreControllerNames == null) {
             ignoreControllerNames = new HashSet<>();

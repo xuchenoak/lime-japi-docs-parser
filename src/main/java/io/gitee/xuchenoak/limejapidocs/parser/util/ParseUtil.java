@@ -11,8 +11,13 @@ import io.gitee.xuchenoak.limejapidocs.parser.basenode.AnnotationNode;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.FieldNode;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.TagNode;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -180,6 +185,108 @@ public class ParseUtil {
             return null;
         }
         return "/".concat(fullName.replace(".", "/")).concat(".java");
+    }
+
+    /**
+     * 轻量读取java文件的顶层类型全名（包名.顶层类型名），仅扫描文件头，不做完整语法解析。
+     * 用于初始化建索引 / build 阶段按全名过滤 controller 文件，速度快于完整 JavaParser parse。
+     * 仅处理最常规的「package 声明 + 顶层 class/interface/record/enum」写法，非常规写法返回 null。
+     *
+     * @param javaFile java文件
+     * @return 顶层类型全名；无法识别时返回 null
+     */
+    public static String readTopLevelFullName(File javaFile) {
+        if (javaFile == null || !javaFile.isFile()) {
+            return null;
+        }
+        String packageName = null;
+        String topTypeName = null;
+        int braceDepth = 0;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                new FileInputStream(javaFile), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("//") || trimmed.startsWith("/*") || trimmed.startsWith("*")) {
+                    continue;
+                }
+                // package 声明（仅文件头，braceDepth==0 时）
+                if (braceDepth == 0 && packageName == null && trimmed.startsWith("package ")) {
+                    int semi = trimmed.indexOf(';');
+                    if (semi > "package ".length()) {
+                        packageName = trimmed.substring("package ".length(), semi).trim();
+                    }
+                    continue;
+                }
+                // 追踪花括号深度，识别顶层类型
+                if (topTypeName == null) {
+                    String typeName = matchTopLevelType(trimmed);
+                    if (typeName != null && braceDepth == 0) {
+                        topTypeName = typeName;
+                    }
+                }
+                braceDepth += countChar(trimmed, '{') - countChar(trimmed, '}');
+            }
+        } catch (Exception e) {
+            return null;
+        }
+        if (StringUtil.isBlank(topTypeName)) {
+            return null;
+        }
+        return StringUtil.isNotBlank(packageName) ? packageName.concat(".").concat(topTypeName) : topTypeName;
+    }
+
+    /**
+     * 匹配顶层类型声明（class/interface/record/enum <Name>），返回类型名
+     */
+    private static String matchTopLevelType(String trimmed) {
+        // 跳过注释行剩余部分
+        int commentIdx = trimmed.indexOf("//");
+        if (commentIdx >= 0) {
+            trimmed = trimmed.substring(0, commentIdx).trim();
+        }
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        for (String keyword : new String[]{"class", "interface", "record", "enum"}) {
+            // 要求关键字后紧跟空白再跟标识符，且不以 @ 开头（注解）
+            if (trimmed.startsWith("@")) {
+                return null;
+            }
+            int idx = trimmed.indexOf(keyword);
+            if (idx < 0) {
+                continue;
+            }
+            int nameStart = idx + keyword.length();
+            if (nameStart < trimmed.length() && Character.isWhitespace(trimmed.charAt(nameStart))) {
+                int cursor = nameStart;
+                while (cursor < trimmed.length() && Character.isWhitespace(trimmed.charAt(cursor))) {
+                    cursor++;
+                }
+                int nameEnd = cursor;
+                while (nameEnd < trimmed.length()
+                        && (Character.isLetterOrDigit(trimmed.charAt(nameEnd)) || trimmed.charAt(nameEnd) == '_')) {
+                    nameEnd++;
+                }
+                if (nameEnd > cursor) {
+                    return trimmed.substring(cursor, nameEnd);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 统计字符串中某字符出现次数
+     */
+    private static int countChar(String str, char c) {
+        int count = 0;
+        for (int i = 0; i < str.length(); i++) {
+            if (str.charAt(i) == c) {
+                count++;
+            }
+        }
+        return count;
     }
 
 

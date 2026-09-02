@@ -98,9 +98,24 @@ public class LimeJapiDocsParserTest {
 
     @Test
     public void build_filtersByControllerName() {
-        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerName("ExtendsController"));
+        // 类全名过滤（升级后不再支持简单名）
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerName(EXTENDS_CONTROLLER));
         assertEquals(1, list.size());
         assertEquals(EXTENDS_CONTROLLER, list.get(0).getControllerFullName());
+    }
+
+    @Test
+    public void build_filtersByControllerFullNameExcludesOthers() {
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerName(USER_CONTROLLER));
+        assertEquals(1, list.size());
+        assertEquals(USER_CONTROLLER, list.get(0).getControllerFullName());
+    }
+
+    @Test
+    public void build_ignoresByControllerFullName() {
+        List<ControllerData> list = build(false, cfg -> cfg.addIgnoreControllerName(EXTENDS_CONTROLLER));
+        assertEquals(1, list.size());
+        assertEquals(USER_CONTROLLER, list.get(0).getControllerFullName());
     }
 
     @Test
@@ -526,5 +541,51 @@ public class LimeJapiDocsParserTest {
             }
         }
         file.delete();
+    }
+
+    @Test
+    public void build_acceptsModuleRootDirNotEndingWithJava() {
+        // 配置更上一层的目录（非 /java 结尾），递归扫描仍能解析跨包引用
+        File moduleRoot = new File("src/test/resources/fixtures/sample");
+        List<ControllerData> collector = new ArrayList<>();
+        LimeJapiDocsParser.build(new ParserConfigHandler() {
+            @Override
+            public ParserConfig getParserConfig() {
+                return ParserConfig.build(moduleRoot.getAbsolutePath());
+            }
+
+            @Override
+            public void parseFinishedHandle(List<ControllerData> controllerDataList) {
+                collector.addAll(controllerDataList);
+            }
+        });
+        assertEquals(2, collector.size());
+        ControllerData user = controllerOf(collector, USER_CONTROLLER);
+        assertNotNull(user);
+        // 跨包/跨目录引用（controller 引 dto.User、record 等）仍能解析出字段
+        InterfaceData info = interfaceOf(user, "getById");
+        assertNotNull(info);
+        assertNotNull(info.getResData());
+        assertFalse(info.getResData().isLastValue());
+    }
+
+    @Test
+    public void build_filterPackageWithModuleRootDir() {
+        // 任意目录下，filterControllerPackages 仍精准按包过滤
+        File moduleRoot = new File("src/test/resources/fixtures/sample");
+        List<ControllerData> collector = new ArrayList<>();
+        LimeJapiDocsParser.build(new ParserConfigHandler() {
+            @Override
+            public ParserConfig getParserConfig() {
+                return ParserConfig.build(moduleRoot.getAbsolutePath())
+                        .addFilterControllerPackage("io.gitee.sample.controller");
+            }
+
+            @Override
+            public void parseFinishedHandle(List<ControllerData> controllerDataList) {
+                collector.addAll(controllerDataList);
+            }
+        });
+        assertEquals(2, collector.size());
     }
 }

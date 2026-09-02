@@ -148,8 +148,8 @@ public abstract class ClassParser<T extends ClassNode> {
     /**
      * 校验root路径（静态纯校验，无状态）
      *
-     * @param rootPath 待校验的root路径
-     * @return 路径以 java 结尾且非空时返回 true
+     * @param rootPath 待校验的root路径（任意深度目录或单个 .java 文件）
+     * @return 路径为已存在的目录或 .java 文件时返回 true
      */
     public static boolean checkRootPath(String rootPath) {
         return ParseSession.isValidRootPath(rootPath);
@@ -307,6 +307,15 @@ public abstract class ClassParser<T extends ClassNode> {
             return null;
         } finally {
             session.setParseDepth(depth);
+            // 回溯清理父级节点表：本类解析结束后从祖先路径中移除，
+            // 使 parentNodeNameMap 仅代表「当前字段路径的祖先类链」而非整条解析链的全局已访问集，
+            // 避免同一类内兄弟字段/兄弟方法返回类型互相误判为递归父节点而错误截断
+            if (parentNodeNameMap != null) {
+                String parsedFullName = this.classNode.getFullName();
+                if (StringUtil.isNotBlank(parsedFullName)) {
+                    parentNodeNameMap.remove(parsedFullName);
+                }
+            }
         }
     }
 
@@ -1004,7 +1013,8 @@ public abstract class ClassParser<T extends ClassNode> {
     }
 
     /**
-     * 按类全名在当前文件包路径或root集下查找java文件
+     * 按类全名在当前文件包路径或真实文件索引下查找java文件
+     * 同包优先（沿用旧语义消歧同名类），其次在真实文件索引中按相对路径后缀匹配
      */
     private File findJavaFileByFullName(String fullName) {
         String relativePath = ParseUtil.fullNameToRelativePath(fullName);
@@ -1014,13 +1024,7 @@ public abstract class ClassParser<T extends ClassNode> {
                 return javaFile;
             }
         }
-        for (String rootPath : session.getRootPaths()) {
-            File javaFile = new File(rootPath.concat(relativePath));
-            if (javaFile.exists()) {
-                return javaFile;
-            }
-        }
-        return null;
+        return session.findJavaFileByRelativePath(relativePath);
     }
 
 

@@ -114,18 +114,6 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                 && !classDoc.getAnnotationByName("Controller").isPresent()) {
             throw CustomException.instance("{}类非Controller接口类，不再解析", className);
         }
-        Set<String> filterControllerNames = parserConfigHandler.getParserConfig().getFilterControllerNames();
-        Set<String> ignoreControllerNames = parserConfigHandler.getParserConfig().getIgnoreControllerNames();
-        if (ListUtil.isNotBlank(filterControllerNames)) {
-            if (filterControllerNames.stream().filter(n -> n.equals(className)).count() < 1) {
-                throw CustomException.instance("已配置的仅解析接口类未包含{}类，不再解析", className);
-            }
-        }
-        if (ListUtil.isNotBlank(ignoreControllerNames)) {
-            if (ignoreControllerNames.stream().filter(n -> n.equals(className)).count() > 0) {
-                throw CustomException.instance("已配置忽略解析接口类包含{}类，不再解析", className);
-            }
-        }
     }
 
     @Override
