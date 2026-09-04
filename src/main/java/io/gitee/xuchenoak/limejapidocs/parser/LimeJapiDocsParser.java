@@ -15,6 +15,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * 解析调用入口
@@ -98,7 +99,8 @@ public class LimeJapiDocsParser {
 
     /**
      * 路径级粗滤待解析的 controller 候选文件（不读文件内容，仅按文件路径判断）：
-     * 1. filterControllerPackages：按「包目录段」包含匹配（配置任意一级包命中该包及全部子包，段边界精确）
+     * 1. filterControllerPackages：无 * 按「包目录段」包含匹配（配置任意一级包命中该包及全部子包，段边界精确）；
+     *    含 * 按「路径通配正则」（* 单段 / ** 多段）匹配，可出现在任意位置
      * 2. filterControllerNames / ignoreControllerNames：按「类全名转相对路径」后缀匹配（public controller 类名=文件名）
      * 语义：粗滤结果必为 ControllerParser 精确校验的超集——只缩小 parse 范围，不遗漏真正的 controller 文件；
      * 多余放行的反例文件由 ControllerParser 基于真实 AST 精确拒绝。本方法只读候选列表，不改动会话真实索引，
@@ -118,11 +120,16 @@ public class LimeJapiDocsParser {
         if (!hasFilter) {
             return javaFileList;
         }
-        // 预转：包名 → 目录段（com.zwfw → com/zwfw）；类全名 → 相对路径（/com/zwfw/X.java）
+        // 预转：无 * 包名 → 目录段（com.zwfw → com/zwfw）；含 * 包名 → 路径通配正则；类全名 → 相对路径（/com/zwfw/X.java）
         List<String> packageSegments = new ArrayList<>();
+        List<Pattern> packagePathPatterns = new ArrayList<>();
         if (ListUtil.isNotBlank(filterControllerPackages)) {
             for (String p : filterControllerPackages) {
-                packageSegments.add(p.replace('.', '/'));
+                if (p.contains("*")) {
+                    packagePathPatterns.add(toPackagePathPattern(p));
+                } else {
+                    packageSegments.add(p.replace('.', '/'));
+                }
             }
         }
         List<String> filterNameRelativePaths = toRelativePaths(filterControllerNames);
@@ -130,8 +137,12 @@ public class LimeJapiDocsParser {
         List<File> result = new ArrayList<>();
         for (File file : javaFileList) {
             String normalizedPath = file.getAbsolutePath().replace('\\', '/');
-            if (ListUtil.isNotBlank(packageSegments)) {
-                boolean pkgHit = packageSegments.stream().anyMatch(seg -> normalizedPath.contains("/" + seg + "/"));
+            if (ListUtil.isNotBlank(packageSegments) || ListUtil.isNotBlank(packagePathPatterns)) {
+                boolean pkgHit = ListUtil.isNotBlank(packageSegments)
+                        && packageSegments.stream().anyMatch(seg -> normalizedPath.contains("/" + seg + "/"));
+                if (!pkgHit && ListUtil.isNotBlank(packagePathPatterns)) {
+                    pkgHit = packagePathPatterns.stream().anyMatch(pat -> pat.matcher(normalizedPath).find());
+                }
                 if (!pkgHit) {
                     continue;
                 }
@@ -151,6 +162,32 @@ public class LimeJapiDocsParser {
             result.add(file);
         }
         return result;
+    }
+
+    /**
+     * 包名模式转「路径通配正则」：包路径 pkg.replace('.','/') 后，* 匹配单个目录段（不含 /），** 匹配任意多段；
+     * 段边界以 (^|/) 与尾部 / 锚定，用于在归一化绝对路径上 find 匹配（粗滤，保持精确结果超集）
+     */
+    private static Pattern toPackagePathPattern(String filterPackage) {
+        String pkgPath = filterPackage.replace('.', '/');
+        StringBuilder sb = new StringBuilder("(^|/)");
+        for (int i = 0; i < pkgPath.length(); i++) {
+            char c = pkgPath.charAt(i);
+            if (c == '*') {
+                if (i + 1 < pkgPath.length() && pkgPath.charAt(i + 1) == '*') {
+                    sb.append(".*");
+                    i++;
+                } else {
+                    sb.append("[^/]+");
+                }
+            } else if (Character.isLetterOrDigit(c) || c == '_' || c == '/') {
+                sb.append(c);
+            } else {
+                sb.append('\\').append(c);
+            }
+        }
+        sb.append('/');
+        return Pattern.compile(sb.toString());
     }
 
     /**

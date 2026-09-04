@@ -264,6 +264,7 @@ public class StringUtil {
 - 2026-09-04 V2.1.2 更新：
     - 【行为调整】三字段过滤由 build 阶段移回 ControllerParser.handleParseClassDocBefore：filterControllerPackages（包层级前缀匹配，支持配置任意一级包命中该包及全部子包）/ filterControllerNames / ignoreControllerNames（类全名）基于真实 AST 取包名构造类全名精确校验（弃用不准确的轻量读文件头方案）。
     - 性能优化：build 层新增路径级粗滤（不读文件内容）——filterControllerPackages 按包目录段包含、名称类按「类全名转相对路径」后缀匹配，缩小 controller 候选的 parse 范围；被引用类（含内部嵌套类/DTO/VO/record）仍经全量真实索引定位，不受影响。
+    - 新增功能：filterControllerPackages 支持 *（单段）/ **（多段）通配，可出现在包名任意位置（如 **.controller 命中所有以 .controller 结尾的包）。
 
 
 ## 6 最后&致谢

@@ -25,6 +25,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +67,42 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             return false;
         }
         return parserConfigHandler.getParserConfig().getLastValueTypeFullName().contains(fullName);
+    }
+
+    /**
+     * 判断包名是否匹配配置的 controller 包：
+     * 无 * 的配置项走包层级前缀匹配（equals 或 前缀+"." 子包）；含 * 的配置项走通配正则（* 单段 / ** 多段，可出现在任意位置）
+     */
+    private static boolean matchesFilterPackage(String filterPackage, String packageName) {
+        if (!filterPackage.contains("*")) {
+            return packageName.equals(filterPackage) || packageName.startsWith(filterPackage + ".");
+        }
+        return Pattern.matches(toPackageRegex(filterPackage), packageName);
+    }
+
+    /**
+     * 包名模式转正则：'.' 转义，'*' 匹配单个包段（不含 '.'），'**' 匹配任意多段（可匹配空）
+     */
+    private static String toPackageRegex(String pattern) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            if (c == '*') {
+                if (i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
+                    sb.append(".*");
+                    i++;
+                } else {
+                    sb.append("[^.]+");
+                }
+            } else if (c == '.') {
+                sb.append("\\.");
+            } else if (Character.isLetterOrDigit(c) || c == '_') {
+                sb.append(c);
+            } else {
+                sb.append('\\').append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -130,10 +167,9 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         Set<String> filterControllerNames = parserConfig.getFilterControllerNames();
         Set<String> ignoreControllerNames = parserConfig.getIgnoreControllerNames();
         if (ListUtil.isNotBlank(filterControllerPackages)) {
-            // 包层级前缀匹配：配置任意一级包，命中该包及其全部子包（段边界精确，防 com.zwfw 误命中 com.zwfwx）
+            // 包匹配：无 * 走包层级前缀匹配（配置任意一级包命中该包及全部子包）；含 * 走通配正则（* 单段 / ** 多段，可出现在任意位置）
             boolean matched = StringUtil.isNotBlank(packageName)
-                    && filterControllerPackages.stream()
-                            .anyMatch(p -> packageName.equals(p) || packageName.startsWith(p + "."));
+                    && filterControllerPackages.stream().anyMatch(p -> matchesFilterPackage(p, packageName));
             if (!matched) {
                 throw CustomException.instance("{}类不在指定解析包内，不再解析", fullName);
             }

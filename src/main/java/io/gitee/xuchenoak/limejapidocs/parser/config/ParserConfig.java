@@ -24,7 +24,8 @@ public class ParserConfig {
     private Set<String> lastValueTypeFullName;
 
     /**
-     * 仅扫描解析该包集合下的controller类（支持配置任意一级包，匹配该包及其全部子包；不配置默认扫描所有已配置目录下的全部文件）
+     * 仅扫描解析该包集合下的controller类（支持配置任意一级包，匹配该包及其全部子包；支持 *（单段）/ **（多段）通配，可出现在任意位置；
+     * 不配置默认扫描所有已配置目录下的全部文件）
      */
     private Set<String> filterControllerPackages;
 
@@ -65,9 +66,9 @@ public class ParserConfig {
     }
 
     /**
-     * 仅扫描的controller包集合（支持配置任意一级包，匹配该包及其全部子包）
+     * 仅扫描的controller包集合（支持配置任意一级包，匹配该包及其全部子包；支持 * 单段 / ** 多段通配，如 **.controller）
      *
-     * @param packages controller包名（任意层级）
+     * @param packages controller包名（任意层级，可含 * / ** 通配）
      */
     public ParserConfig addFilterControllerPackage(String... packages) {
         if (filterControllerPackages == null) {

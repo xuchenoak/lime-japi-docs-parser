@@ -11,7 +11,9 @@ import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -119,6 +121,65 @@ public class ScopeServiceRegressionTest {
                 "second 应展开为 PairLeaf");
         assertTrue(secondValue.getFieldInfoList().stream().anyMatch(f -> "key".equals(f.getName())),
                 "second 应展开为 PairLeaf");
+    }
+
+    private List<ControllerData> buildCollect(Consumer<ParserConfig> tweak) {
+        List<ControllerData> collector = new ArrayList<>();
+        LimeJapiDocsParser.build(new ParserConfigHandler() {
+            @Override
+            public ParserConfig getParserConfig() {
+                ParserConfig config = ParserConfig.build(FIXTURE_ROOT);
+                if (tweak != null) {
+                    tweak.accept(config);
+                }
+                return config;
+            }
+
+            @Override
+            public void parseFinishedHandle(List<ControllerData> controllerDataList) {
+                collector.addAll(controllerDataList);
+            }
+        });
+        return collector;
+    }
+
+    @Test
+    public void wildcardDoubleStarControllerSuffix() {
+        // **.controller：任意多段前缀 + .controller 结尾，跨包全部命中
+        List<ControllerData> list = buildCollect(cfg -> cfg.addFilterControllerPackage("**.controller"));
+        assertEquals(2, list.size());
+    }
+
+    @Test
+    public void wildcardSingleSegmentMatchesDirectSubpackageOnly() {
+        // com.scope.test.*：仅直接子包（* 单段），com.scope.test.sub.controller（更深）不命中
+        List<ControllerData> list = buildCollect(cfg -> cfg.addFilterControllerPackage("com.scope.test.*"));
+        assertEquals(1, list.size());
+        assertEquals("com.scope.test.controller.ScopeController", list.get(0).getControllerFullName());
+    }
+
+    @Test
+    public void wildcardDoubleStarMatchesAllSubpackages() {
+        // com.scope.test.**：所有子包
+        List<ControllerData> list = buildCollect(cfg -> cfg.addFilterControllerPackage("com.scope.test.**"));
+        assertEquals(2, list.size());
+    }
+
+    @Test
+    public void wildcardMidSingleSegment() {
+        // com.scope.test.*.controller：中间单段，仅 com.scope.test.sub.controller 命中（4 段的 ...controller 不匹配）
+        List<ControllerData> list = buildCollect(cfg -> cfg.addFilterControllerPackage("com.scope.test.*.controller"));
+        assertEquals(1, list.size());
+        assertEquals("com.scope.test.sub.controller.DeepScopeController", list.get(0).getControllerFullName());
+    }
+
+    @Test
+    public void wildcardMidDoubleStar() {
+        // com.scope.test.**.controller：** 匹配任意多层中间段。零中间段的 com.scope.test.controller
+        // 不匹配（** 空段会产生 com.scope.test..controller 双点，非法包名），仅 com.scope.test.sub.controller 命中
+        List<ControllerData> list = buildCollect(cfg -> cfg.addFilterControllerPackage("com.scope.test.**.controller"));
+        assertEquals(1, list.size());
+        assertEquals("com.scope.test.sub.controller.DeepScopeController", list.get(0).getControllerFullName());
     }
 
     private FieldInfo fieldOf(List<FieldInfo> fieldInfoList, String name) {
