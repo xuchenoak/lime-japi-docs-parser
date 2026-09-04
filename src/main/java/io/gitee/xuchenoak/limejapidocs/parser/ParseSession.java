@@ -10,8 +10,10 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -43,6 +45,12 @@ public class ParseSession {
     private final Set<String> realJavaFilePaths = new LinkedHashSet<>();
 
     /**
+     * 按文件名分组的绝对路径二级索引（文件名如 User.java -> 候选绝对路径列表），
+     * 供 findJavaFileByRelativePath 由 O(n) 全量遍历降为 O(1) 取候选后精确匹配
+     */
+    private final Map<String, List<String>> javaFilePathIndexByFileName = new HashMap<>();
+
+    /**
      * 类节点模板缓存（root集|类全名 -> ClassNode），单次解析窗口内共享已解析类模板
      */
     private final java.util.Map<String, ClassNode> classNodeCache = new java.util.HashMap<>();
@@ -71,7 +79,7 @@ public class ParseSession {
         File file = new File(rootPath);
         if (file.isFile() && rootPath.endsWith(".java")) {
             rootPaths.add(rootPath);
-            realJavaFilePaths.add(file.getAbsolutePath());
+            addToIndex(file);
             sortedRootKey = null;
             return;
         }
@@ -85,8 +93,20 @@ public class ParseSession {
         if (ListUtil.isNotBlank(javaFiles)) {
             for (File javaFile : javaFiles) {
                 realJavaFilePaths.add(javaFile.getAbsolutePath());
+                addToIndex(javaFile);
             }
         }
+    }
+
+    /**
+     * 将 java 文件绝对路径登记进按文件名分组的二级索引
+     */
+    private void addToIndex(File javaFile) {
+        String absolutePath = javaFile.getAbsolutePath();
+        realJavaFilePaths.add(absolutePath);
+        String fileName = javaFile.getName();
+        List<String> candidates = javaFilePathIndexByFileName.computeIfAbsent(fileName, k -> new ArrayList<>());
+        candidates.add(absolutePath);
     }
 
     /**
@@ -117,7 +137,13 @@ public class ParseSession {
             return null;
         }
         String normalizedRel = relativePath.replace('\\', '/');
-        for (String absolutePath : realJavaFilePaths) {
+        int slash = normalizedRel.lastIndexOf('/');
+        String fileName = slash >= 0 ? normalizedRel.substring(slash + 1) : normalizedRel;
+        List<String> candidates = javaFilePathIndexByFileName.get(fileName);
+        if (candidates == null) {
+            return null;
+        }
+        for (String absolutePath : candidates) {
             if (absolutePath.replace('\\', '/').endsWith(normalizedRel)) {
                 return new File(absolutePath);
             }
@@ -140,6 +166,7 @@ public class ParseSession {
     public void clearRootPaths() {
         rootPaths.clear();
         realJavaFilePaths.clear();
+        javaFilePathIndexByFileName.clear();
         sortedRootKey = null;
     }
 

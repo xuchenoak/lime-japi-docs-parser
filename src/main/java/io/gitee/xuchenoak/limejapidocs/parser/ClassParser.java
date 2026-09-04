@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * 类解析器
@@ -46,6 +47,11 @@ public abstract class ClassParser<T extends ClassNode> {
      * 最大类解析嵌套深度
      */
     private static final int MAX_PARSE_DEPTH = 64;
+
+    /**
+     * 泛型实参去壳正则（如 List<String> → List），预编译避免重复即时编译
+     */
+    private static final Pattern GENERIC_ARGS_PATTERN = Pattern.compile("<.*>");
 
     /**
      * 解析会话：本解析器实例（含其递归子解析器）共享的解析状态（root路径、类模板缓存、嵌套深度）
@@ -300,7 +306,7 @@ public abstract class ClassParser<T extends ClassNode> {
             session.cacheClassNode(this.classNode);
             return this.classNode;
         } catch (CustomException e) {
-            logger.info(e.getMsg());
+//            logger.info(e.getMsg());
             return null;
         } catch (Exception e) {
             logger.error("java文件解析异常", e);
@@ -826,7 +832,7 @@ public abstract class ClassParser<T extends ClassNode> {
             // 仅为类名则获取类全名
             else {
                 // 去除泛型
-                className = className.replaceAll("<.*>", "");
+                className = GENERIC_ARGS_PATTERN.matcher(className).replaceAll("");
 
                 // 所有同名不同包的类（这里可能会解析到非该类，同名不同包最好标注在使用时）
                 List<ImportNode> importNodes = this.classNode.getImportNodeByClassNameContainsAsterisk(className);
@@ -956,7 +962,7 @@ public abstract class ClassParser<T extends ClassNode> {
         // Java环境内部包
         else if (fullName.startsWith(ParseUtil.JAVA_PACKAGE_PREFIX)) {
             // 去除泛型
-            fullName = fullName.replaceAll("<.*>", "");
+            fullName = GENERIC_ARGS_PATTERN.matcher(fullName).replaceAll("");
             clazz = loadClassWithNestedFallback(fullName);
             if (clazz != null) {
                 if (Collection.class.isAssignableFrom(clazz)) {
@@ -1013,18 +1019,25 @@ public abstract class ClassParser<T extends ClassNode> {
     }
 
     /**
-     * 按类全名在当前文件包路径或真实文件索引下查找java文件
-     * 同包优先（沿用旧语义消歧同名类），其次在真实文件索引中按相对路径后缀匹配
+     * 按类全名在真实文件索引中查找java文件（索引 O(1) 优先，避免磁盘探测）；
+     * 索引未命中（如 root 配置不全）时以同包路径磁盘探测兜底（沿用旧语义消歧同名类）
      */
     private File findJavaFileByFullName(String fullName) {
         String relativePath = ParseUtil.fullNameToRelativePath(fullName);
+        if (StringUtil.isBlank(relativePath)) {
+            return null;
+        }
+        File indexedFile = session.findJavaFileByRelativePath(relativePath);
+        if (indexedFile != null) {
+            return indexedFile;
+        }
         if (StringUtil.isNotBlank(this.classNode.getFilePackagePath())) {
             File javaFile = new File(this.classNode.getFilePackagePath().concat(relativePath));
             if (javaFile.exists()) {
                 return javaFile;
             }
         }
-        return session.findJavaFileByRelativePath(relativePath);
+        return null;
     }
 
 
