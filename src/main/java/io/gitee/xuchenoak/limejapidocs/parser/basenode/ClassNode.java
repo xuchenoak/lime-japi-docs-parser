@@ -8,6 +8,7 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,6 +50,11 @@ public class ClassNode extends BaseNode {
      * 导包集
      */
     private List<ImportNode> importNodeList;
+
+    /**
+     * 按简单类名分组的 import 索引（惰性构建：解析完成后首次访问时基于 importNodeList 建立）
+     */
+    private Map<String, List<ImportNode>> importNodeIndexByClassName;
 
     /**
      * 属性集
@@ -160,6 +166,24 @@ public class ClassNode extends BaseNode {
             importNodeList = new ArrayList<>();
         }
         importNodeList.add(importNode);
+        // import 集变化，惰性索引失效，下次访问重建
+        importNodeIndexByClassName = null;
+    }
+
+    /**
+     * 惰性构建按简单类名分组的 import 索引
+     */
+    private Map<String, List<ImportNode>> buildImportIndex() {
+        Map<String, List<ImportNode>> index = new HashMap<>();
+        if (ListUtil.isNotBlank(importNodeList)) {
+            for (ImportNode importNode : importNodeList) {
+                String className = importNode.getClassName();
+                if (StringUtil.isNotBlank(className)) {
+                    index.computeIfAbsent(className, k -> new ArrayList<>()).add(importNode);
+                }
+            }
+        }
+        return index;
     }
 
     /**
@@ -169,27 +193,26 @@ public class ClassNode extends BaseNode {
      * @return 类导包节点集
      */
     public List<ImportNode> getImportNodeByClassNameContainsAsterisk(String className) {
-        List<ImportNode> resList = getImportNodeByClassName(className);
+        List<ImportNode> resList = new ArrayList<>(getImportNodeByClassName(className));
         resList.addAll(getAsteriskImportNodeByClassName(className));
         return resList;
     }
 
     /**
-     * 获取同类名包节点
+     * 获取同类名包节点（走按简单类名分组的索引，O(1)）
      *
      * @param className 类名
      * @return 类导包节点集
      */
     public List<ImportNode> getImportNodeByClassName(String className) {
-        List<ImportNode> resList = new ArrayList<>();
-        if (ListUtil.isNotBlank(importNodeList) && StringUtil.isNotBlank(className)) {
-            for (ImportNode importNode : importNodeList) {
-                if (className.equals(importNode.getClassName())) {
-                    resList.add(importNode);
-                }
-            }
+        if (StringUtil.isBlank(className)) {
+            return new ArrayList<>();
         }
-        return resList;
+        if (importNodeIndexByClassName == null) {
+            importNodeIndexByClassName = buildImportIndex();
+        }
+        List<ImportNode> hit = importNodeIndexByClassName.get(className);
+        return hit == null ? new ArrayList<>() : hit;
     }
 
     /**
@@ -199,14 +222,20 @@ public class ClassNode extends BaseNode {
      * @return 类导包节点集
      */
     public List<ImportNode> getAsteriskImportNodeByClassName(String className) {
-        List<ImportNode> resList = new ArrayList<>();
-        if (ListUtil.isNotBlank(importNodeList) && StringUtil.isNotBlank(className)) {
-            for (ImportNode importNode : importNodeList) {
-                if ("*".equals(importNode.getClassName())) {
-                    String fullName = importNode.getFullName().replace("*", className);
-                    resList.add(new ImportNode(className, fullName));
-                }
-            }
+        if (StringUtil.isBlank(className)) {
+            return new ArrayList<>();
+        }
+        if (importNodeIndexByClassName == null) {
+            importNodeIndexByClassName = buildImportIndex();
+        }
+        List<ImportNode> asterisks = importNodeIndexByClassName.get("*");
+        if (asterisks == null) {
+            return new ArrayList<>();
+        }
+        List<ImportNode> resList = new ArrayList<>(asterisks.size());
+        for (ImportNode importNode : asterisks) {
+            String fullName = importNode.getFullName().replace("*", className);
+            resList.add(new ImportNode(className, fullName));
         }
         return resList;
     }

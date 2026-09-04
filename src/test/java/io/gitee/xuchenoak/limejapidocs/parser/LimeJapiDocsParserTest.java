@@ -98,9 +98,24 @@ public class LimeJapiDocsParserTest {
 
     @Test
     public void build_filtersByControllerName() {
-        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerName("ExtendsController"));
+        // 类全名过滤（升级后不再支持简单名）
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerName(EXTENDS_CONTROLLER));
         assertEquals(1, list.size());
         assertEquals(EXTENDS_CONTROLLER, list.get(0).getControllerFullName());
+    }
+
+    @Test
+    public void build_filtersByControllerFullNameExcludesOthers() {
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerName(USER_CONTROLLER));
+        assertEquals(1, list.size());
+        assertEquals(USER_CONTROLLER, list.get(0).getControllerFullName());
+    }
+
+    @Test
+    public void build_ignoresByControllerFullName() {
+        List<ControllerData> list = build(false, cfg -> cfg.addIgnoreControllerName(EXTENDS_CONTROLLER));
+        assertEquals(1, list.size());
+        assertEquals(USER_CONTROLLER, list.get(0).getControllerFullName());
     }
 
     @Test
@@ -110,9 +125,26 @@ public class LimeJapiDocsParserTest {
     }
 
     @Test
-    public void build_throwsWhenFilterPackageMissing() {
-        assertThrows(RuntimeException.class,
-                () -> build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.missing")));
+    public void build_filtersByControllerPackageAncestorPrefix() {
+        // 配置任意一级包：上级包命中其全部子包下的 controller
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample"));
+        assertEquals(2, list.size());
+        List<ControllerData> topList = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee"));
+        assertEquals(2, topList.size());
+    }
+
+    @Test
+    public void build_filterControllerPackageSegmentBoundary() {
+        // 段边界：配置的包必须是完整包前缀，不得按子串命中
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.contr"));
+        assertEquals(0, list.size());
+    }
+
+    @Test
+    public void build_filterPackageMissingYieldsEmptyResult() {
+        // 配置不存在的包不再抛「包路径不存在」异常（包过滤已移至 ControllerParser），结果为解析不到 controller
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.missing"));
+        assertEquals(0, list.size());
     }
 
     @Test
@@ -348,6 +380,23 @@ public class LimeJapiDocsParserTest {
     }
 
     @Test
+    public void build_packageFilterStillResolvesReferencedNestedClasses() {
+        // 路径级粗滤只缩小 controller 候选，不影响 controller 引用的外部类（含内部嵌套类）经全量真实索引解析
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.controller"));
+        ControllerData user = controllerOf(list, USER_CONTROLLER);
+        assertNotNull(user);
+        InterfaceData inner = interfaceOf(user, "inner");
+        assertNotNull(inner);
+        FieldDataNode resData = inner.getResData();
+        assertNotNull(resData);
+        assertFalse(resData.isLastValue());
+        assertNotNull(resData.getFieldInfoList());
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "innerName".equals(f.getName()) && "String".equals(f.getType())),
+                "包过滤下 controller 引用的 Outer.Inner 内部类仍应展开");
+    }
+
+    @Test
     public void build_nestedRecordReferenceResolved() {
         ControllerData user = controllerOf(build(), USER_CONTROLLER);
         InterfaceData nestedRec = interfaceOf(user, "nestedRec");
@@ -526,5 +575,51 @@ public class LimeJapiDocsParserTest {
             }
         }
         file.delete();
+    }
+
+    @Test
+    public void build_acceptsModuleRootDirNotEndingWithJava() {
+        // 配置更上一层的目录（非 /java 结尾），递归扫描仍能解析跨包引用
+        File moduleRoot = new File("src/test/resources/fixtures/sample");
+        List<ControllerData> collector = new ArrayList<>();
+        LimeJapiDocsParser.build(new ParserConfigHandler() {
+            @Override
+            public ParserConfig getParserConfig() {
+                return ParserConfig.build(moduleRoot.getAbsolutePath());
+            }
+
+            @Override
+            public void parseFinishedHandle(List<ControllerData> controllerDataList) {
+                collector.addAll(controllerDataList);
+            }
+        });
+        assertEquals(2, collector.size());
+        ControllerData user = controllerOf(collector, USER_CONTROLLER);
+        assertNotNull(user);
+        // 跨包/跨目录引用（controller 引 dto.User、record 等）仍能解析出字段
+        InterfaceData info = interfaceOf(user, "getById");
+        assertNotNull(info);
+        assertNotNull(info.getResData());
+        assertFalse(info.getResData().isLastValue());
+    }
+
+    @Test
+    public void build_filterPackageWithModuleRootDir() {
+        // 任意目录下，filterControllerPackages 仍精准按包过滤
+        File moduleRoot = new File("src/test/resources/fixtures/sample");
+        List<ControllerData> collector = new ArrayList<>();
+        LimeJapiDocsParser.build(new ParserConfigHandler() {
+            @Override
+            public ParserConfig getParserConfig() {
+                return ParserConfig.build(moduleRoot.getAbsolutePath())
+                        .addFilterControllerPackage("io.gitee.sample.controller");
+            }
+
+            @Override
+            public void parseFinishedHandle(List<ControllerData> controllerDataList) {
+                collector.addAll(controllerDataList);
+            }
+        });
+        assertEquals(2, collector.size());
     }
 }

@@ -23,7 +23,7 @@ lime-japi-docs-parser是一个Java Controller接口解析器，可以从Java源�
 <dependency>
     <groupId>io.gitee.xuchenoak</groupId>
     <artifactId>lime-japi-docs-parser</artifactId>
-    <version>2.0.1</version>
+    <version>2.1.2</version>
 </dependency>
 ```
 ### 2.2 下载jar包（方式二）
@@ -74,7 +74,7 @@ public static void main(String[] args) {
          */
         @Override
         public ParserConfig getParserConfig() {
-            // 路径为java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
+            // 路径为java源码目录绝对路径（任意深度，可为模块根/项目根）
             return ParserConfig.build("F:/**/src/main/java");
         }
 
@@ -148,20 +148,20 @@ public interface ParserConfigHandler {
 // 解析配置类（以下属性均提供了add链式调用方法，参数也均为动态参数）
 public class ParserConfig {
 
-    // java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
-    // 如果项目是多模块则将多模块的源码路径都加进去即可
+    // java源码目录绝对路径（任意深度，可为模块根/项目根，可配置多个）
+    // 如果项目是多模块，把各模块源码所在目录（或其公共父目录）加进去即可
     private Set<String> javaFilePaths;
 
     // 自定义识别为基础数据类型的类全名（默认已包含基础数据类型及其包装类和Big类，无需再添加），作用是遇到该类型时不再拆开解析其属性，认为是最后的类型
     private Set<String> lastValueTypeFullName;
 
-    // 仅扫描解析该包集合下的controller类（必须位于javaFilePaths下，若不配置默认扫描javaFilePaths下所有）
+    // 仅扫描解析该包集合下的controller类（支持配置任意一级包，匹配该包及其全部子包；不配置默认扫描所有已配置目录下的全部文件）
     private Set<String> filterControllerPackages;
 
-    // 仅扫描的controller类名集（非类全名，按照文件名称字符串匹配）
+    // 仅扫描的controller类全名集（如 io.gitee.sample.controller.UserController）
     private Set<String> filterControllerNames;
 
-    // 需要排除的controller类名集（非类全名，按照文件名称字符串匹配）
+    // 需要排除的controller类全名集（如 io.gitee.sample.controller.UserController）
     private Set<String> ignoreControllerNames;
 
     // 是否使用确定性ID（默认false），通过 setDeterministicId(boolean) 链式开启
@@ -176,7 +176,7 @@ public class ParserConfig {
 ```java
 public static void main(String[] args) {
 
-    // 第一步：实例化抽象类ClassParser，添加java源码绝对路径（必须写到java目录，且只能以java结尾，不带“/”）
+    // 第一步：实例化抽象类ClassParser，添加java源码目录绝对路径（任意深度）
     ClassParser<ClassNode> parser = new ClassParser<ClassNode>() {
     };
     parser.addRootPath("F:/**/src/main/java");
@@ -255,6 +255,17 @@ public class StringUtil {
     - 健壮性与性能：`MAX_PARSE_DEPTH=64` 深度护卫防栈溢出；线程局部解析器随 `build` 结束释放（`ClassParser.removeJavaParser()`）；字段继承去重改为线性、缓存 key 惰性化；默认值注入补充 Boolean/Character。
     - 异常体系统一：`CustomException` 提供 `CODE_SYSTEM`/`CODE_BIZ` 常量。
     - 引入测试基建：JUnit 5 + 内置样例 fixture 项目，`mvn test` 可全量回归。
+
+- 2026-09-02 V2.1.1 更新（重要升级，含破坏性变更，升级前请阅读本记录）：
+    - 【破坏性变更】目录配置改为「任意深度目录」：ParserConfig.javaFilePaths / ClassParser.addRootPath(s) 不再要求必须写到 java 目录，可传模块根/项目根等任意深度目录（或单个 .java 文件）；初始化时递归扫描配置目录下所有 .java 建「真实文件索引」，解析引用类按「类全名拼相对路径」后缀匹配定位文件，跨模块/任意深度均成立（旧写法 .../src/main/java 仍可用）。
+    - 【破坏性变更】ParserConfig.filterControllerNames / ignoreControllerNames 改为匹配类全名（不再支持简单名）；filterControllerPackages 仍按包名匹配。三字段统一在 build 阶段文件索引层过滤（被过滤文件不进入解析，省性能）。
+    - 性能：真实文件索引一次构建全程复用，解析引用类由「root 前缀拼接 + 磁盘探测」改为内存后缀匹配，批量/多模块场景显著更优。
+
+- 2026-09-04 V2.1.2 更新：
+    - 【行为调整】三字段过滤由 build 阶段移回 ControllerParser.handleParseClassDocBefore：filterControllerPackages（包层级前缀匹配，支持配置任意一级包命中该包及全部子包）/ filterControllerNames / ignoreControllerNames（类全名）基于真实 AST 取包名构造类全名精确校验（弃用不准确的轻量读文件头方案）。
+    - 性能优化：build 层新增路径级粗滤（不读文件内容）——filterControllerPackages 按包目录段包含、名称类按「类全名转相对路径」后缀匹配，缩小 controller 候选的 parse 范围；被引用类（含内部嵌套类/DTO/VO/record）仍经全量真实索引定位，不受影响。
+    - 新增功能：filterControllerPackages 支持 *（单段）/ **（多段）通配，可出现在包名任意位置（如 **.controller 命中所有以 .controller 结尾的包）。
+
 
 ## 6 最后&致谢
 

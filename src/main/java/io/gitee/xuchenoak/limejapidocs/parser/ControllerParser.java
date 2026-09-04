@@ -4,6 +4,8 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.*;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
@@ -12,6 +14,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceMethodType;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceRequestContentType;
 import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
 import io.gitee.xuchenoak.limejapidocs.parser.handler.ParserConfigHandler;
+import io.gitee.xuchenoak.limejapidocs.parser.config.ParserConfig;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.ControllerNode;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.FieldDataNode;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.FieldInfo;
@@ -22,6 +25,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.util.StringUtil;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -63,6 +67,42 @@ public class ControllerParser extends ClassParser<ControllerNode> {
             return false;
         }
         return parserConfigHandler.getParserConfig().getLastValueTypeFullName().contains(fullName);
+    }
+
+    /**
+     * 判断包名是否匹配配置的 controller 包：
+     * 无 * 的配置项走包层级前缀匹配（equals 或 前缀+"." 子包）；含 * 的配置项走通配正则（* 单段 / ** 多段，可出现在任意位置）
+     */
+    private static boolean matchesFilterPackage(String filterPackage, String packageName) {
+        if (!filterPackage.contains("*")) {
+            return packageName.equals(filterPackage) || packageName.startsWith(filterPackage + ".");
+        }
+        return Pattern.matches(toPackageRegex(filterPackage), packageName);
+    }
+
+    /**
+     * 包名模式转正则：'.' 转义，'*' 匹配单个包段（不含 '.'），'**' 匹配任意多段（可匹配空）
+     */
+    private static String toPackageRegex(String pattern) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < pattern.length(); i++) {
+            char c = pattern.charAt(i);
+            if (c == '*') {
+                if (i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
+                    sb.append(".*");
+                    i++;
+                } else {
+                    sb.append("[^.]+");
+                }
+            } else if (c == '.') {
+                sb.append("\\.");
+            } else if (Character.isLetterOrDigit(c) || c == '_') {
+                sb.append(c);
+            } else {
+                sb.append('\\').append(c);
+            }
+        }
+        return sb.toString();
     }
 
     /**
@@ -114,16 +154,34 @@ public class ControllerParser extends ClassParser<ControllerNode> {
                 && !classDoc.getAnnotationByName("Controller").isPresent()) {
             throw CustomException.instance("{}类非Controller接口类，不再解析", className);
         }
-        Set<String> filterControllerNames = parserConfigHandler.getParserConfig().getFilterControllerNames();
-        Set<String> ignoreControllerNames = parserConfigHandler.getParserConfig().getIgnoreControllerNames();
+        // 类全名（包名.类名），与 parseBaseMeta 构造的全名一致，基于真实 AST 取值，准确可靠
+        String packageName = classDoc.findCompilationUnit()
+                .flatMap(CompilationUnit::getPackageDeclaration)
+                .map(PackageDeclaration::getNameAsString)
+                .orElse(null);
+        String fullName = StringUtil.isNotBlank(packageName)
+                ? packageName.concat(".").concat(className)
+                : className;
+        ParserConfig parserConfig = parserConfigHandler.getParserConfig();
+        Set<String> filterControllerPackages = parserConfig.getFilterControllerPackages();
+        Set<String> filterControllerNames = parserConfig.getFilterControllerNames();
+        Set<String> ignoreControllerNames = parserConfig.getIgnoreControllerNames();
+        if (ListUtil.isNotBlank(filterControllerPackages)) {
+            // 包匹配：无 * 走包层级前缀匹配（配置任意一级包命中该包及全部子包）；含 * 走通配正则（* 单段 / ** 多段，可出现在任意位置）
+            boolean matched = StringUtil.isNotBlank(packageName)
+                    && filterControllerPackages.stream().anyMatch(p -> matchesFilterPackage(p, packageName));
+            if (!matched) {
+                throw CustomException.instance("{}类不在指定解析包内，不再解析", fullName);
+            }
+        }
         if (ListUtil.isNotBlank(filterControllerNames)) {
-            if (filterControllerNames.stream().filter(n -> n.equals(className)).count() < 1) {
-                throw CustomException.instance("已配置的仅解析接口类未包含{}类，不再解析", className);
+            if (!filterControllerNames.contains(fullName)) {
+                throw CustomException.instance("已配置的仅解析接口类未包含{}类，不再解析", fullName);
             }
         }
         if (ListUtil.isNotBlank(ignoreControllerNames)) {
-            if (ignoreControllerNames.stream().filter(n -> n.equals(className)).count() > 0) {
-                throw CustomException.instance("已配置忽略解析接口类包含{}类，不再解析", className);
+            if (ignoreControllerNames.contains(fullName)) {
+                throw CustomException.instance("已配置忽略解析接口类包含{}类，不再解析", fullName);
             }
         }
     }

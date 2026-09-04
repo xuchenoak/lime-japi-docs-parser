@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * 类解析器
@@ -46,6 +47,11 @@ public abstract class ClassParser<T extends ClassNode> {
      * 最大类解析嵌套深度
      */
     private static final int MAX_PARSE_DEPTH = 64;
+
+    /**
+     * 泛型实参去壳正则（如 List<String> → List），预编译避免重复即时编译
+     */
+    private static final Pattern GENERIC_ARGS_PATTERN = Pattern.compile("<.*>");
 
     /**
      * 解析会话：本解析器实例（含其递归子解析器）共享的解析状态（root路径、类模板缓存、嵌套深度）
@@ -148,8 +154,8 @@ public abstract class ClassParser<T extends ClassNode> {
     /**
      * 校验root路径（静态纯校验，无状态）
      *
-     * @param rootPath 待校验的root路径
-     * @return 路径以 java 结尾且非空时返回 true
+     * @param rootPath 待校验的root路径（任意深度目录或单个 .java 文件）
+     * @return 路径为已存在的目录或 .java 文件时返回 true
      */
     public static boolean checkRootPath(String rootPath) {
         return ParseSession.isValidRootPath(rootPath);
@@ -307,6 +313,15 @@ public abstract class ClassParser<T extends ClassNode> {
             return null;
         } finally {
             session.setParseDepth(depth);
+            // 回溯清理父级节点表：本类解析结束后从祖先路径中移除，
+            // 使 parentNodeNameMap 仅代表「当前字段路径的祖先类链」而非整条解析链的全局已访问集，
+            // 避免同一类内兄弟字段/兄弟方法返回类型互相误判为递归父节点而错误截断
+            if (parentNodeNameMap != null) {
+                String parsedFullName = this.classNode.getFullName();
+                if (StringUtil.isNotBlank(parsedFullName)) {
+                    parentNodeNameMap.remove(parsedFullName);
+                }
+            }
         }
     }
 
@@ -817,7 +832,7 @@ public abstract class ClassParser<T extends ClassNode> {
             // 仅为类名则获取类全名
             else {
                 // 去除泛型
-                className = className.replaceAll("<.*>", "");
+                className = GENERIC_ARGS_PATTERN.matcher(className).replaceAll("");
 
                 // 所有同名不同包的类（这里可能会解析到非该类，同名不同包最好标注在使用时）
                 List<ImportNode> importNodes = this.classNode.getImportNodeByClassNameContainsAsterisk(className);
@@ -947,7 +962,7 @@ public abstract class ClassParser<T extends ClassNode> {
         // Java环境内部包
         else if (fullName.startsWith(ParseUtil.JAVA_PACKAGE_PREFIX)) {
             // 去除泛型
-            fullName = fullName.replaceAll("<.*>", "");
+            fullName = GENERIC_ARGS_PATTERN.matcher(fullName).replaceAll("");
             clazz = loadClassWithNestedFallback(fullName);
             if (clazz != null) {
                 if (Collection.class.isAssignableFrom(clazz)) {
@@ -1004,18 +1019,20 @@ public abstract class ClassParser<T extends ClassNode> {
     }
 
     /**
-     * 按类全名在当前文件包路径或root集下查找java文件
+     * 按类全名在真实文件索引中查找java文件（索引 O(1) 优先，避免磁盘探测）；
+     * 索引未命中（如 root 配置不全）时以同包路径磁盘探测兜底（沿用旧语义消歧同名类）
      */
     private File findJavaFileByFullName(String fullName) {
         String relativePath = ParseUtil.fullNameToRelativePath(fullName);
+        if (StringUtil.isBlank(relativePath)) {
+            return null;
+        }
+        File indexedFile = session.findJavaFileByRelativePath(relativePath);
+        if (indexedFile != null) {
+            return indexedFile;
+        }
         if (StringUtil.isNotBlank(this.classNode.getFilePackagePath())) {
             File javaFile = new File(this.classNode.getFilePackagePath().concat(relativePath));
-            if (javaFile.exists()) {
-                return javaFile;
-            }
-        }
-        for (String rootPath : session.getRootPaths()) {
-            File javaFile = new File(rootPath.concat(relativePath));
             if (javaFile.exists()) {
                 return javaFile;
             }
