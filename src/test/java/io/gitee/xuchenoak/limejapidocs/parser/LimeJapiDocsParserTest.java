@@ -125,9 +125,26 @@ public class LimeJapiDocsParserTest {
     }
 
     @Test
-    public void build_throwsWhenFilterPackageMissing() {
-        assertThrows(RuntimeException.class,
-                () -> build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.missing")));
+    public void build_filtersByControllerPackageAncestorPrefix() {
+        // 配置任意一级包：上级包命中其全部子包下的 controller
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample"));
+        assertEquals(2, list.size());
+        List<ControllerData> topList = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee"));
+        assertEquals(2, topList.size());
+    }
+
+    @Test
+    public void build_filterControllerPackageSegmentBoundary() {
+        // 段边界：配置的包必须是完整包前缀，不得按子串命中
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.contr"));
+        assertEquals(0, list.size());
+    }
+
+    @Test
+    public void build_filterPackageMissingYieldsEmptyResult() {
+        // 配置不存在的包不再抛「包路径不存在」异常（包过滤已移至 ControllerParser），结果为解析不到 controller
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.missing"));
+        assertEquals(0, list.size());
     }
 
     @Test
@@ -360,6 +377,23 @@ public class LimeJapiDocsParserTest {
         assertNotNull(resData.getFieldInfoList());
         assertTrue(resData.getFieldInfoList().stream()
                 .anyMatch(f -> "innerName".equals(f.getName()) && "String".equals(f.getType())));
+    }
+
+    @Test
+    public void build_packageFilterStillResolvesReferencedNestedClasses() {
+        // 路径级粗滤只缩小 controller 候选，不影响 controller 引用的外部类（含内部嵌套类）经全量真实索引解析
+        List<ControllerData> list = build(false, cfg -> cfg.addFilterControllerPackage("io.gitee.sample.controller"));
+        ControllerData user = controllerOf(list, USER_CONTROLLER);
+        assertNotNull(user);
+        InterfaceData inner = interfaceOf(user, "inner");
+        assertNotNull(inner);
+        FieldDataNode resData = inner.getResData();
+        assertNotNull(resData);
+        assertFalse(resData.isLastValue());
+        assertNotNull(resData.getFieldInfoList());
+        assertTrue(resData.getFieldInfoList().stream()
+                .anyMatch(f -> "innerName".equals(f.getName()) && "String".equals(f.getType())),
+                "包过滤下 controller 引用的 Outer.Inner 内部类仍应展开");
     }
 
     @Test

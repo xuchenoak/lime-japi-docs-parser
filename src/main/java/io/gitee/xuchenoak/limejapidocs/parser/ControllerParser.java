@@ -4,6 +4,8 @@ package io.gitee.xuchenoak.limejapidocs.parser;
 import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.crypto.SecureUtil;
+import com.github.javaparser.ast.CompilationUnit;
+import com.github.javaparser.ast.PackageDeclaration;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import io.gitee.xuchenoak.limejapidocs.parser.basenode.*;
 import io.gitee.xuchenoak.limejapidocs.parser.bean.ControllerData;
@@ -12,6 +14,7 @@ import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceMethodType;
 import io.gitee.xuchenoak.limejapidocs.parser.constant.InterfaceRequestContentType;
 import io.gitee.xuchenoak.limejapidocs.parser.exception.CustomException;
 import io.gitee.xuchenoak.limejapidocs.parser.handler.ParserConfigHandler;
+import io.gitee.xuchenoak.limejapidocs.parser.config.ParserConfig;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.ControllerNode;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.FieldDataNode;
 import io.gitee.xuchenoak.limejapidocs.parser.parsendoe.FieldInfo;
@@ -113,6 +116,37 @@ public class ControllerParser extends ClassParser<ControllerNode> {
         if (!classDoc.getAnnotationByName("RestController").isPresent()
                 && !classDoc.getAnnotationByName("Controller").isPresent()) {
             throw CustomException.instance("{}类非Controller接口类，不再解析", className);
+        }
+        // 类全名（包名.类名），与 parseBaseMeta 构造的全名一致，基于真实 AST 取值，准确可靠
+        String packageName = classDoc.findCompilationUnit()
+                .flatMap(CompilationUnit::getPackageDeclaration)
+                .map(PackageDeclaration::getNameAsString)
+                .orElse(null);
+        String fullName = StringUtil.isNotBlank(packageName)
+                ? packageName.concat(".").concat(className)
+                : className;
+        ParserConfig parserConfig = parserConfigHandler.getParserConfig();
+        Set<String> filterControllerPackages = parserConfig.getFilterControllerPackages();
+        Set<String> filterControllerNames = parserConfig.getFilterControllerNames();
+        Set<String> ignoreControllerNames = parserConfig.getIgnoreControllerNames();
+        if (ListUtil.isNotBlank(filterControllerPackages)) {
+            // 包层级前缀匹配：配置任意一级包，命中该包及其全部子包（段边界精确，防 com.zwfw 误命中 com.zwfwx）
+            boolean matched = StringUtil.isNotBlank(packageName)
+                    && filterControllerPackages.stream()
+                            .anyMatch(p -> packageName.equals(p) || packageName.startsWith(p + "."));
+            if (!matched) {
+                throw CustomException.instance("{}类不在指定解析包内，不再解析", fullName);
+            }
+        }
+        if (ListUtil.isNotBlank(filterControllerNames)) {
+            if (!filterControllerNames.contains(fullName)) {
+                throw CustomException.instance("已配置的仅解析接口类未包含{}类，不再解析", fullName);
+            }
+        }
+        if (ListUtil.isNotBlank(ignoreControllerNames)) {
+            if (ignoreControllerNames.contains(fullName)) {
+                throw CustomException.instance("已配置忽略解析接口类包含{}类，不再解析", fullName);
+            }
         }
     }
 

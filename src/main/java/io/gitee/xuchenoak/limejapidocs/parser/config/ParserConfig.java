@@ -24,7 +24,7 @@ public class ParserConfig {
     private Set<String> lastValueTypeFullName;
 
     /**
-     * 仅扫描解析该包集合下的controller类（不配置默认扫描所有已配置目录下的全部文件）
+     * 仅扫描解析该包集合下的controller类（支持配置任意一级包，匹配该包及其全部子包；不配置默认扫描所有已配置目录下的全部文件）
      */
     private Set<String> filterControllerPackages;
 
@@ -64,6 +64,11 @@ public class ParserConfig {
         return inject(lastValueTypeFullName, fullNames);
     }
 
+    /**
+     * 仅扫描的controller包集合（支持配置任意一级包，匹配该包及其全部子包）
+     *
+     * @param packages controller包名（任意层级）
+     */
     public ParserConfig addFilterControllerPackage(String... packages) {
         if (filterControllerPackages == null) {
             filterControllerPackages = new HashSet<>();

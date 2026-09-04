@@ -51,8 +51,9 @@ public class LimeJapiDocsParser {
                 throw CustomException.instance("未找到可解析.java文件");
             }
             List<File> javaFileList = toFiles(session.getRealJavaFilePaths());
-            // 三字段统一在文件索引层过滤（build 阶段）
-            javaFileList = filterByConfig(javaFileList, parserConfigHandler.getParserConfig());
+            // 路径级粗滤：仅按包目录段/类全名相对路径缩小 controller 候选文件的 parse 范围（不读文件内容），
+            // 结果必为 ControllerParser 精确校验的超集，被引用类（含内部嵌套类）仍经全量真实索引定位，不受影响
+            javaFileList = filterFilesByConfig(javaFileList, parserConfigHandler.getParserConfig());
 
             List<ControllerData> controllerDataList = new ArrayList<>();
             int sort = 1;
@@ -85,17 +86,29 @@ public class LimeJapiDocsParser {
     }
 
     /**
-     * 三字段统一在文件索引层过滤待解析文件：
-     * 1. filterControllerPackages（仅扫描包，按顶层类型包名匹配）；过滤后为空且配置非空则判定包不存在
-     * 2. filterControllerNames（仅扫描类全名）
-     * 3. ignoreControllerNames（排除类全名）
-     * 仅当任一过滤配置存在时才轻量读取文件头解析顶层类全名，避免无谓开销
-     *
-     * @param javaFileList 候选文件集
-     * @param config       解析配置
-     * @return 过滤后的文件集
+     * 绝对路径集转 File 列表
      */
-    private static List<File> filterByConfig(List<File> javaFileList, ParserConfig config) {
+    private static List<File> toFiles(Set<String> paths) {
+        List<File> files = new ArrayList<>();
+        for (String path : paths) {
+            files.add(new File(path));
+        }
+        return files;
+    }
+
+    /**
+     * 路径级粗滤待解析的 controller 候选文件（不读文件内容，仅按文件路径判断）：
+     * 1. filterControllerPackages：按「包目录段」包含匹配（配置任意一级包命中该包及全部子包，段边界精确）
+     * 2. filterControllerNames / ignoreControllerNames：按「类全名转相对路径」后缀匹配（public controller 类名=文件名）
+     * 语义：粗滤结果必为 ControllerParser 精确校验的超集——只缩小 parse 范围，不遗漏真正的 controller 文件；
+     * 多余放行的反例文件由 ControllerParser 基于真实 AST 精确拒绝。本方法只读候选列表，不改动会话真实索引，
+     * 因此 controller 引用的其它类（含内部嵌套类/DTO/VO/record）仍经全量真实索引定位，不受影响。
+     *
+     * @param javaFileList 全部 .java 候选文件
+     * @param config       解析配置
+     * @return 粗滤后的候选文件列表
+     */
+    private static List<File> filterFilesByConfig(List<File> javaFileList, ParserConfig config) {
         Set<String> filterControllerPackages = config.getFilterControllerPackages();
         Set<String> filterControllerNames = config.getFilterControllerNames();
         Set<String> ignoreControllerNames = config.getIgnoreControllerNames();
@@ -105,42 +118,55 @@ public class LimeJapiDocsParser {
         if (!hasFilter) {
             return javaFileList;
         }
+        // 预转：包名 → 目录段（com.zwfw → com/zwfw）；类全名 → 相对路径（/com/zwfw/X.java）
+        List<String> packageSegments = new ArrayList<>();
+        if (ListUtil.isNotBlank(filterControllerPackages)) {
+            for (String p : filterControllerPackages) {
+                packageSegments.add(p.replace('.', '/'));
+            }
+        }
+        List<String> filterNameRelativePaths = toRelativePaths(filterControllerNames);
+        List<String> ignoreNameRelativePaths = toRelativePaths(ignoreControllerNames);
         List<File> result = new ArrayList<>();
         for (File file : javaFileList) {
-            String fullName = ParseUtil.readTopLevelFullName(file);
-            if (StringUtil.isBlank(fullName)) {
-                continue;
-            }
-            if (ListUtil.isNotBlank(filterControllerPackages)) {
-                String packageName = fullName.substring(0, fullName.lastIndexOf("."));
-                if (!filterControllerPackages.contains(packageName)) {
+            String normalizedPath = file.getAbsolutePath().replace('\\', '/');
+            if (ListUtil.isNotBlank(packageSegments)) {
+                boolean pkgHit = packageSegments.stream().anyMatch(seg -> normalizedPath.contains("/" + seg + "/"));
+                if (!pkgHit) {
                     continue;
                 }
             }
-            if (ListUtil.isNotBlank(filterControllerNames) && !filterControllerNames.contains(fullName)) {
-                continue;
+            if (ListUtil.isNotBlank(filterNameRelativePaths)) {
+                boolean nameHit = filterNameRelativePaths.stream().anyMatch(normalizedPath::endsWith);
+                if (!nameHit) {
+                    continue;
+                }
             }
-            if (ListUtil.isNotBlank(ignoreControllerNames) && ignoreControllerNames.contains(fullName)) {
-                continue;
+            if (ListUtil.isNotBlank(ignoreNameRelativePaths)) {
+                boolean ignored = ignoreNameRelativePaths.stream().anyMatch(normalizedPath::endsWith);
+                if (ignored) {
+                    continue;
+                }
             }
             result.add(file);
-        }
-        // 仅扫描包配置存在但一个文件都未命中 → 判定指定包路径不存在
-        if (ListUtil.isNotBlank(filterControllerPackages) && ListUtil.isBlank(result)) {
-            throw CustomException.instance("指定解析的controller包路径不存在");
         }
         return result;
     }
 
     /**
-     * 绝对路径集转 File 列表
+     * 类全名集转相对路径集（供路径级粗滤后缀匹配）
      */
-    private static List<File> toFiles(Set<String> paths) {
-        List<File> files = new ArrayList<>();
-        for (String path : paths) {
-            files.add(new File(path));
+    private static List<String> toRelativePaths(Set<String> fullNames) {
+        List<String> relativePaths = new ArrayList<>();
+        if (ListUtil.isNotBlank(fullNames)) {
+            for (String fullName : fullNames) {
+                String relativePath = ParseUtil.fullNameToRelativePath(fullName);
+                if (StringUtil.isNotBlank(relativePath)) {
+                    relativePaths.add(relativePath);
+                }
+            }
         }
-        return files;
+        return relativePaths;
     }
 
 }

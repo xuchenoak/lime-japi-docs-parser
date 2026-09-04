@@ -300,7 +300,7 @@ public abstract class ClassParser<T extends ClassNode> {
             session.cacheClassNode(this.classNode);
             return this.classNode;
         } catch (CustomException e) {
-//            logger.info(e.getMsg());
+            logger.info(e.getMsg());
             return null;
         } catch (Exception e) {
             logger.error("java文件解析异常", e);
